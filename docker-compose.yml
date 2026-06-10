@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: portfolio-backend
+    restart: unless-stopped
+    volumes:
+      - portfolio-data:/app/data
+      - ./config:/app/config:ro
+    environment:
+      - DATABASE_URL=sqlite:////app/data/portfolio.db
+      - SECRET_KEY=${SECRET_KEY:-verander-dit-in-productie}
+      - UPDATE_TIME_1=${UPDATE_TIME_1:-08:00}
+      - UPDATE_TIME_2=${UPDATE_TIME_2:-13:00}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build: ./frontend
+    container_name: portfolio-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  portfolio-data:
+    name: portfolio-data

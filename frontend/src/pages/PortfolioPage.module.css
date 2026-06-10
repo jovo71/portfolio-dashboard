@@ -1,0 +1,12 @@
+.page { display: flex; flex-direction: column; gap: 20px; }
+.header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+.brokerBadge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.degiro { background: rgba(255, 107, 53, 0.15); color: #ff6b35; }
+.rabobank { background: rgba(227, 0, 27, 0.15); color: #e3001b; }

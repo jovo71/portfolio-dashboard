@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+*.db
+*.db-journal
+
+# Node
+node_modules/
+dist/
+.parcel-cache/
+*.local
+
+# Omgevingsbestanden
+.env
+.env.local
+.env.*.local
+
+# Configuratie met gevoelige gegevens
+config/auth.yaml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.log
