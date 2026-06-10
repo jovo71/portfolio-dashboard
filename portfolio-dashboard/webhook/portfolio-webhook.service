@@ -1,0 +1,24 @@
+[Unit]
+Description=GitHub Webhook Server voor Portfolio Dashboard
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/portfolio-dashboard
+ExecStart=/usr/bin/python3 /opt/webhook/webhook_server.py
+Restart=always
+RestartSec=5
+
+# Configuratie
+Environment="WEBHOOK_SECRET=verander-dit-geheim"
+Environment="APP_DIR=/opt/portfolio-dashboard"
+Environment="WEBHOOK_PORT=9000"
+Environment="BRANCH=main"
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
