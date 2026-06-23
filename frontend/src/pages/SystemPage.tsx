@@ -42,8 +42,35 @@ export default function SystemPage() {
     setDeploying(true)
     try {
       await systemApi.deploy()
-      toast.success('Update gestart — de app herstart zo en is na ~1 minuut weer beschikbaar')
+      toast.success('Update gestart — de app wordt herstart…')
+      waitForRestart()
     } catch { toast.error('Update starten mislukt'); setDeploying(false) }
+  }
+
+  // Wacht tot de backend daadwerkelijk herstart is (down → weer up)
+  // en herlaad dan de pagina zodat de nieuw gebouwde frontend laadt.
+  function waitForRestart() {
+    let sawDown = false
+    let attempts = 0
+    const maxAttempts = 60 // ~2 minuten bij 2s interval
+    const timer = setInterval(async () => {
+      attempts++
+      try {
+        await systemApi.status()
+        if (sawDown) {
+          clearInterval(timer)
+          toast.success('Update voltooid — pagina wordt herladen')
+          setTimeout(() => window.location.reload(), 800)
+        }
+      } catch {
+        sawDown = true // backend/nginx is even onbereikbaar tijdens de herstart
+      }
+      if (attempts >= maxAttempts) {
+        clearInterval(timer)
+        setDeploying(false)
+        toast('Herlaad de pagina (F5) om de nieuwe versie te laden')
+      }
+    }, 2000)
   }
 
   useEffect(() => {
