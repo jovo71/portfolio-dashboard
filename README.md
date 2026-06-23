@@ -21,14 +21,64 @@ Een professionele webapplicatie voor het monitoren van uw persoonlijke belegging
 
 ---
 
-## 🚀 Snel starten met Docker
+## 🚀 Aanbevolen installatie — Proxmox LXC (zonder Docker)
+
+Dit is de manier waarop het dashboard in productie draait: native in een Debian/Ubuntu LXC-container op Proxmox, met systemd-services en Nginx als reverse proxy.
+
+### Vereisten
+- Een Debian/Ubuntu LXC-container (root-toegang)
+
+### Installatie met het script
+```bash
+# In de LXC, als root
+curl -fsSL https://raw.githubusercontent.com/jovo71/portfolio-dashboard/main/webhook/install_no_docker.sh -o install.sh
+bash install.sh
+```
+
+Het script ([`webhook/install_no_docker.sh`](webhook/install_no_docker.sh)) doet automatisch:
+
+1. Systeempakketten en Node.js 20 installeren
+2. De repository klonen naar `/opt/portfolio-dashboard`
+3. Vraagt om gebruikersnaam + wachtwoord en schrijft die naar `config/auth.yaml`
+4. Backend installeren als systemd-service **`portfolio-backend`** (luistert op `127.0.0.1:8000`, met een willekeurig gegenereerde `SECRET_KEY`)
+5. Frontend bouwen naar `frontend/dist/`
+6. **Nginx** configureren: serveert de frontend op poort 80 en proxyt `/api/` door naar de backend
+7. Een **webhook-service** (`portfolio-webhook`, poort 9000) installeren voor automatische deploys bij een git push
+8. Optioneel voorbeelddata laden
+
+Na afloop is het dashboard bereikbaar op **http://<lxc-ip>** en de API-documentatie op **http://<lxc-ip>:8000/docs**.
+
+### Architectuur op de LXC
+```
+Browser → Nginx :80 ──┬─→ statische frontend (frontend/dist/)
+                      └─→ /api/  →  127.0.0.1:8000 (uvicorn backend)
+```
+De backend is bewust alleen op `127.0.0.1` bereikbaar; alle externe toegang loopt via Nginx.
+
+### Beheer van de services
+```bash
+systemctl status portfolio-backend     # backend
+systemctl status portfolio-webhook     # auto-deploy webhook
+systemctl status nginx                 # webserver / proxy
+journalctl -u portfolio-backend -f     # backend-logs volgen
+```
+
+### Configuratie wijzigen (native installatie)
+- **Inloggegevens:** bewerk `/opt/portfolio-dashboard/config/auth.yaml`
+- **Backend-instellingen** (`SECRET_KEY`, `UPDATE_TIME_*`, enz.): staan als `Environment=`-regels in `/etc/systemd/system/portfolio-backend.service`. Na wijzigen: `systemctl daemon-reload && systemctl restart portfolio-backend`
+
+> ℹ️ Bij de native installatie is er **geen `.env`-bestand**. De `.env.example` hoort uitsluitend bij de Docker-opzet hieronder.
+
+---
+
+## 🐳 Alternatief — Docker
 
 ### Vereisten
 - [Docker](https://docs.docker.com/get-docker/) en [Docker Compose](https://docs.docker.com/compose/install/)
 
 ### Stap 1 — Repository klonen
 ```bash
-git clone https://github.com/uwgebruiker/portfolio-dashboard.git
+git clone https://github.com/jovo71/portfolio-dashboard.git
 cd portfolio-dashboard
 ```
 
@@ -109,6 +159,7 @@ password: uwWachtwoord
 | `UPDATE_TIME_2` | `13:00` | Tweede dagelijkse koersupdate |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `1440` | JWT verlooptijd (minuten) |
 | `DATABASE_URL` | SQLite pad | Database connectiestring |
+| `AUTH_CONFIG_PATH` | `/app/config/auth.yaml` | Pad naar het `auth.yaml`-bestand met inloggegevens |
 
 ---
 
@@ -160,11 +211,15 @@ portfolio-dashboard/
 │   └── nginx.conf
 ├── config/
 │   └── auth.yaml          # Inloggegevens
-├── .env.example
+├── webhook/               # Installatie & auto-deploy (native LXC)
+│   ├── install_no_docker.sh  # Aanbevolen installatiescript
+│   ├── install.sh            # Docker-variant
+│   └── webhook_server.py     # GitHub webhook voor auto-deploy
+├── .env.example           # Alleen voor de Docker-opzet
 ├── .github/
 │   └── workflows/
 │       └── ci.yml         # GitHub Actions
-└── docker-compose.yml
+└── docker-compose.yml     # Alleen voor de Docker-opzet
 ```
 
 ---

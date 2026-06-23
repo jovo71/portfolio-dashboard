@@ -6,7 +6,6 @@
 set -e
 
 APP_DIR="/opt/portfolio-dashboard"
-WEBHOOK_PORT="9000"
 
 echo ""
 echo "╔══════════════════════════════════════════╗"
@@ -125,54 +124,14 @@ systemctl restart nginx
 systemctl enable nginx
 echo "✓ Nginx geconfigureerd"
 
-# ── 8. Webhook service installeren ───────────────────────
+# ── 8. Deploy-script activeren ───────────────────────────
+# Updates worden via de "App bijwerken"-knop in het dashboard
+# gestart (pull vanaf de LXC). Er is geen inkomende webhook
+# nodig — dat werkt toch niet achter NAT op een privé-IP.
 echo ""
-echo "▶ Webhook server installeren..."
-WEBHOOK_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
-
-cat > /etc/systemd/system/portfolio-webhook.service << EOF
-[Unit]
-Description=GitHub Webhook Server
-After=network.target
-
-[Service]
-Type=simple
-User=root
-ExecStart=/usr/bin/python3 $APP_DIR/webhook/webhook_server.py
-Restart=always
-RestartSec=5
-Environment="WEBHOOK_SECRET=$WEBHOOK_SECRET"
-Environment="APP_DIR=$APP_DIR"
-Environment="WEBHOOK_PORT=$WEBHOOK_PORT"
-Environment="BRANCH=main"
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Webhook update script aanpassen (geen Docker)
-cat > "$APP_DIR/webhook/deploy.sh" << 'DEPLOY'
-#!/bin/bash
-cd /opt/portfolio-dashboard
-git pull origin main
-
-# Backend herstarten
-systemctl restart portfolio-backend
-
-# Frontend opnieuw bouwen
-cd /opt/portfolio-dashboard/frontend
-npm ci --silent
-npm run build
-
-systemctl restart nginx
-echo "Deploy klaar!"
-DEPLOY
+echo "▶ Deploy-script activeren..."
 chmod +x "$APP_DIR/webhook/deploy.sh"
-
-systemctl daemon-reload
-systemctl enable portfolio-webhook
-systemctl start portfolio-webhook
-echo "✓ Webhook service gestart op poort $WEBHOOK_PORT"
+echo "✓ Deploy via dashboard-knop beschikbaar"
 
 # ── 9. Voorbeelddata laden ────────────────────────────────
 echo ""
@@ -196,18 +155,9 @@ echo "║                                                      ║"
 printf "║   Dashboard:  http://%-32s║\n" "$IP"
 printf "║   API docs:   http://%-32s║\n" "$IP:8000/docs"
 echo "║                                                      ║"
-echo "║   Webhook URL voor GitHub:                          ║"
-printf "║   http://%-43s║\n" "$IP:$WEBHOOK_PORT/webhook"
-echo "║                                                      ║"
-echo "║   Webhook Secret (bewaar dit!):                     ║"
-printf "║   %-51s║\n" "$WEBHOOK_SECRET"
+echo "║   Updaten: log in op het dashboard en klik op       ║"
+echo "║   'App bijwerken' op de pagina Systeemstatus.       ║"
+echo "║   De LXC haalt dan zelf de nieuwste code op.        ║"
 echo "║                                                      ║"
 echo "╚══════════════════════════════════════════════════════╝"
-echo ""
-echo "Stel de webhook in op GitHub:"
-echo "  Repository → Settings → Webhooks → Add webhook"
-echo "  Payload URL: http://$IP:$WEBHOOK_PORT/webhook"
-echo "  Content type: application/json"
-echo "  Secret: $WEBHOOK_SECRET"
-echo "  Event: Just the push event"
 echo ""

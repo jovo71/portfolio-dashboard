@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 GitHub Webhook Server voor automatische deployments.
-Luistert naar push events van GitHub en voert git pull + docker compose up uit.
+Luistert naar push events van GitHub en voert het deploy-script uit
+(git pull, frontend bouwen en de systemd-services herstarten).
 """
 import hmac
 import hashlib
@@ -36,22 +37,20 @@ def verify_signature(payload: bytes, signature: str) -> bool:
 
 
 def deploy():
-    """Voer git pull en docker compose update uit."""
+    """Voer het native deploy-script uit (git pull, frontend bouwen, services herstarten)."""
     log.info("Deploy gestart...")
-    commands = [
-        ["git", "-C", APP_DIR, "pull", "origin", BRANCH],
-        ["docker", "compose", "-f", f"{APP_DIR}/docker-compose.yml", "up", "-d", "--build"],
-    ]
-    for cmd in commands:
-        log.info(f"Uitvoeren: {' '.join(cmd)}")
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.stdout:
-            log.info(result.stdout)
-        if result.stderr:
-            log.warning(result.stderr)
-        if result.returncode != 0:
-            log.error(f"Commando mislukt met code {result.returncode}")
-            return False
+    deploy_script = os.path.join(APP_DIR, "webhook", "deploy.sh")
+    log.info(f"Uitvoeren: {deploy_script}")
+    result = subprocess.run(
+        ["bash", deploy_script], capture_output=True, text=True
+    )
+    if result.stdout:
+        log.info(result.stdout)
+    if result.stderr:
+        log.warning(result.stderr)
+    if result.returncode != 0:
+        log.error(f"Deploy-script mislukt met code {result.returncode}")
+        return False
     log.info("Deploy succesvol afgerond!")
     return True
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { RefreshCw, CheckCircle, XCircle, Clock, Server } from 'lucide-react'
+import { RefreshCw, CheckCircle, XCircle, Clock, Server, GitBranch, Download } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { systemApi, pricesApi, SystemStatus } from '../api'
+import { systemApi, pricesApi, SystemStatus, VersionInfo } from '../api'
 import { format } from 'date-fns'
 import { nl } from 'date-fns/locale'
 
@@ -9,6 +9,8 @@ export default function SystemPage() {
   const [status, setStatus] = useState<SystemStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [version, setVersion] = useState<VersionInfo | null>(null)
+  const [deploying, setDeploying] = useState(false)
 
   async function load() {
     try {
@@ -16,6 +18,13 @@ export default function SystemPage() {
       setStatus(resp.data)
     } catch { toast.error('Systeemstatus ophalen mislukt') }
     finally { setLoading(false) }
+  }
+
+  async function loadVersion() {
+    try {
+      const resp = await systemApi.version()
+      setVersion(resp.data)
+    } catch { /* versiecontrole is optioneel; stilhouden */ }
   }
 
   async function refreshPrices() {
@@ -28,8 +37,18 @@ export default function SystemPage() {
     finally { setRefreshing(false) }
   }
 
+  async function deploy() {
+    if (!window.confirm('Nieuwste versie ophalen en de applicatie opnieuw opstarten?')) return
+    setDeploying(true)
+    try {
+      await systemApi.deploy()
+      toast.success('Update gestart — de app herstart zo en is na ~1 minuut weer beschikbaar')
+    } catch { toast.error('Update starten mislukt'); setDeploying(false) }
+  }
+
   useEffect(() => {
     load()
+    loadVersion()
     const interval = setInterval(load, 30000)
     return () => clearInterval(interval)
   }, [])
@@ -50,10 +69,21 @@ export default function SystemPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h1>Systeemstatus</h1>
-        <button className="btn btn-secondary btn-sm" onClick={refreshPrices} disabled={refreshing}>
-          <RefreshCw size={14} style={{ animation: refreshing ? 'spin 0.8s linear infinite' : 'none' }} />
-          Koersen verversen
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-secondary btn-sm" onClick={refreshPrices} disabled={refreshing}>
+            <RefreshCw size={14} style={{ animation: refreshing ? 'spin 0.8s linear infinite' : 'none' }} />
+            Koersen verversen
+          </button>
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={deploy}
+            disabled={deploying}
+            title={version?.update_available ? `${version.commits_behind} nieuwe commit(s) beschikbaar` : 'Nieuwste versie ophalen en herstarten'}
+          >
+            <Download size={14} style={{ animation: deploying ? 'spin 0.8s linear infinite' : 'none' }} />
+            {deploying ? 'Bezig met bijwerken…' : 'App bijwerken'}
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -108,6 +138,30 @@ export default function SystemPage() {
                 {fmtDate(status.last_update?.toString())}
               </div>
             </div>
+
+            {version && (
+              <div className="card" style={{ gridColumn: 'span 2' }}>
+                <div className="card-header">
+                  <span className="card-title">Softwareversie</span>
+                  <GitBranch size={15} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 15 }}>
+                    {version.current_commit} ({version.branch})
+                  </span>
+                  {version.update_available ? (
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-orange)' }}>
+                      {version.commits_behind} update(s) beschikbaar
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: 12, color: 'var(--color-gain)' }}>Up-to-date</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                  {version.last_commit_message}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Logboek */}

@@ -178,6 +178,16 @@ export const performanceApi = {
   history: (days?: number) => api.get<{ date: string; value: number }[]>('/performance/history', { params: { days } }),
 }
 
+export interface VersionInfo {
+  current_commit: string
+  branch: string
+  commits_behind: number
+  update_available: boolean
+  last_commit_message: string
+}
+
 export const systemApi = {
   status: () => api.get<SystemStatus>('/system/status'),
+  version: () => api.get<VersionInfo>('/system/version'),
+  deploy: () => api.post<{ status: string; unit: string }>('/system/deploy'),
 }
