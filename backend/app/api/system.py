@@ -87,7 +87,7 @@ def get_version(user: str = Depends(get_current_user)):
 
 
 @router.post("/deploy")
-def trigger_deploy(user: str = Depends(get_current_user)):
+def trigger_deploy(db: Session = Depends(get_db), user: str = Depends(get_current_user)):
     """Start een deploy: haalt nieuwe code op, bouwt de frontend en herstart de services.
 
     Wordt als losse systemd-unit gestart (systemd-run) zodat het script de
@@ -96,6 +96,19 @@ def trigger_deploy(user: str = Depends(get_current_user)):
     deploy_script = os.path.join(APP_DIR, "webhook", "deploy.sh")
     if not os.path.exists(deploy_script):
         raise HTTPException(status_code=500, detail=f"Deploy-script niet gevonden: {deploy_script}")
+
+    # Logregel vastleggen vóór de herstart, zodat deze in SQLite bewaard blijft.
+    try:
+        current = _git("rev-parse", "--short", "HEAD").stdout.strip()
+    except (subprocess.SubprocessError, OSError):
+        current = "onbekend"
+    log = SystemLog(
+        event_type="deploy_started",
+        message=f"Systeemupdate gestart via dashboard (huidige versie: {current})",
+        details=f"door gebruiker: {user}",
+    )
+    db.add(log)
+    db.commit()
 
     unit_name = f"portfolio-deploy-{int(time.time())}"
     try:
