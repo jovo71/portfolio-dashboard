@@ -19,6 +19,10 @@ npm ci --silent
 npm run build
 
 echo "[deploy] Backend herstarten..."
+# Marker achterlaten zodat de backend bij het opstarten een
+# "deploy voltooid"-logregel met de nieuwe versie kan schrijven.
+mkdir -p "$APP_DIR/data"
+touch "$APP_DIR/data/.deploy_completed"
 systemctl restart portfolio-backend
 
 echo "[deploy] Nginx herstarten..."

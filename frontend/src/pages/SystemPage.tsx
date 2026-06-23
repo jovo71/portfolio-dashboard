@@ -87,7 +87,7 @@ export default function SystemPage() {
   }
 
   const eventTypeColor = (t: string) => {
-    if (t.includes('success')) return 'var(--color-gain)'
+    if (t.includes('success') || t.includes('completed')) return 'var(--color-gain)'
     if (t.includes('error')) return 'var(--color-loss)'
     return 'var(--accent-orange)'
   }

@@ -5,8 +5,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
+import os
+import subprocess
 
-from app.database import engine, Base
+from app.database import engine, Base, SessionLocal
+from app.models import SystemLog
 from app.api import auth, investments, prices, dividends, costs, performance, system
 from app.services.scheduler import start_scheduler, stop_scheduler
 
@@ -16,12 +19,43 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+APP_DIR = os.getenv("APP_DIR", "/opt/portfolio-dashboard")
+
+
+def _log_deploy_completed():
+    """Schrijf een 'deploy voltooid'-logregel als een deploy de marker achterliet."""
+    marker = os.path.join(APP_DIR, "data", ".deploy_completed")
+    if not os.path.exists(marker):
+        return
+    try:
+        commit = subprocess.run(
+            ["git", "-C", APP_DIR, "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, timeout=10,
+        ).stdout.strip() or "onbekend"
+    except (subprocess.SubprocessError, OSError):
+        commit = "onbekend"
+
+    db = SessionLocal()
+    try:
+        db.add(SystemLog(
+            event_type="deploy_completed",
+            message=f"Systeemupdate voltooid (nieuwe versie: {commit})",
+        ))
+        db.commit()
+    finally:
+        db.close()
+    try:
+        os.remove(marker)
+    except OSError:
+        pass
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
     logger.info("Starting Portfolio Dashboard API")
     Base.metadata.create_all(bind=engine)
+    _log_deploy_completed()
     start_scheduler()
     yield
     stop_scheduler()
