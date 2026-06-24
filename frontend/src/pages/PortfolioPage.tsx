@@ -38,6 +38,8 @@ export default function PortfolioPage() {
   const [chartInv, setChartInv] = useState<Investment | null>(null)
   const [chartData, setChartData] = useState<{ date: string; price: number }[]>([])
   const [chartLoading, setChartLoading] = useState(false)
+  const [chartPeriod, setChartPeriod] = useState<'1m' | '3m' | '1y'>('1y')
+  const [backfilling, setBackfilling] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -107,12 +109,10 @@ export default function PortfolioPage() {
     }
   }
 
-  async function openChart(inv: Investment) {
-    setChartInv(inv)
-    setChartData([])
+  async function loadChartData(invId: number) {
     setChartLoading(true)
     try {
-      const resp = await pricesApi.history(inv.id)
+      const resp = await pricesApi.history(invId)
       // backend levert aflopend op datum; omdraaien voor de grafiek
       const points = resp.data
         .slice()
@@ -125,6 +125,40 @@ export default function PortfolioPage() {
       setChartLoading(false)
     }
   }
+
+  function openChart(inv: Investment) {
+    setChartInv(inv)
+    setChartData([])
+    setChartPeriod('1y')
+    loadChartData(inv.id)
+  }
+
+  async function backfillChart() {
+    if (!chartInv) return
+    setBackfilling(true)
+    try {
+      const resp = await pricesApi.backfill(chartInv.id, '1y')
+      if (resp.data.added > 0) {
+        toast.success(`${resp.data.added} historische koersen opgehaald`)
+        await loadChartData(chartInv.id)
+      } else {
+        toast(resp.data.reason === 'geen ticker'
+          ? 'Geen ticker ingesteld voor deze belegging'
+          : 'Geen nieuwe historische koersen gevonden')
+      }
+    } catch {
+      toast.error('Historische data ophalen mislukt')
+    } finally {
+      setBackfilling(false)
+    }
+  }
+
+  // Filter op de gekozen periode (client-side)
+  const periodDays = { '1m': 30, '3m': 90, '1y': 365 }[chartPeriod]
+  const visibleChartData = (() => {
+    const cutoff = Date.now() - periodDays * 24 * 60 * 60 * 1000
+    return chartData.filter(p => new Date(p.date).getTime() >= cutoff)
+  })()
 
   async function del(inv: Investment) {
     if (!confirm(`Weet u zeker dat u "${inv.name}" wilt verwijderen?`)) return
@@ -268,15 +302,36 @@ export default function PortfolioPage() {
               <button className="btn btn-secondary btn-sm btn-icon" onClick={() => setChartInv(null)}>✕</button>
             </div>
             <div className="modal-body">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 8, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {(['1m', '3m', '1y'] as const).map(p => (
+                    <button
+                      key={p}
+                      className={`btn btn-sm ${chartPeriod === p ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => setChartPeriod(p)}
+                    >
+                      {p === '1m' ? '1M' : p === '3m' ? '3M' : '1J'}
+                    </button>
+                  ))}
+                </div>
+                <button className="btn btn-secondary btn-sm" onClick={backfillChart} disabled={backfilling}>
+                  <Download size={13} style={{ animation: backfilling ? 'spin 0.8s linear infinite' : 'none' }} />
+                  {backfilling ? 'Ophalen…' : 'Historische data ophalen'}
+                </button>
+              </div>
               {chartLoading ? (
                 <div className="loading"><div className="spinner" /> Laden…</div>
               ) : chartData.length === 0 ? (
                 <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '40px 0' }}>
-                  Nog geen koershistorie beschikbaar voor deze belegging.
+                  Nog geen koershistorie beschikbaar. Klik op "Historische data ophalen" om koersen via Yahoo Finance binnen te halen.
+                </p>
+              ) : visibleChartData.length === 0 ? (
+                <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '40px 0' }}>
+                  Geen koersen in deze periode. Kies een langere periode of haal historische data op.
                 </p>
               ) : (
                 <ResponsiveContainer width="100%" height={300}>
-                  <AreaChart data={chartData}>
+                  <AreaChart data={visibleChartData}>
                     <defs>
                       <linearGradient id="histGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#388bfd" stopOpacity={0.3} />

@@ -154,6 +154,8 @@ export const pricesApi = {
   refresh: () => api.post('/prices/refresh'),
   stats: () => api.get('/prices/stats'),
   history: (investmentId: number) => api.get<PriceHistory[]>(`/prices/${investmentId}/history`),
+  backfill: (investmentId: number, period = '1y') =>
+    api.post<{ added: number; reason?: string }>(`/prices/${investmentId}/backfill`, null, { params: { period } }),
 }
 
 export const dividendsApi = {

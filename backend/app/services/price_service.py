@@ -81,6 +81,56 @@ def update_all_prices(db: Session) -> dict:
     return results
 
 
+def backfill_history(db: Session, investment, period: str = "1y") -> dict:
+    """Haal historische dagkoersen op via Yahoo Finance en vul price_history aan.
+
+    Bestaande dagen worden overgeslagen, zodat herhaald ophalen geen
+    duplicaten oplevert. `period` is een yfinance-periode (bijv. 1mo, 3mo, 1y, max).
+    """
+    if not investment.ticker:
+        return {"added": 0, "reason": "geen ticker"}
+
+    try:
+        hist = yf.Ticker(investment.ticker).history(period=period)
+    except Exception as e:
+        logger.warning(f"Historie ophalen mislukt voor {investment.ticker}: {e}")
+        return {"added": 0, "reason": str(e)}
+
+    if hist is None or hist.empty:
+        return {"added": 0, "reason": "geen data"}
+
+    existing = {
+        p.date.date()
+        for p in db.query(PriceHistory)
+        .filter(PriceHistory.investment_id == investment.id)
+        .all()
+    }
+
+    added = 0
+    for idx, row in hist.iterrows():
+        d = idx.to_pydatetime()
+        if d.date() in existing:
+            continue
+        try:
+            close = float(row["Close"])
+        except (TypeError, ValueError):
+            continue
+        if close <= 0:
+            continue
+        db.add(PriceHistory(
+            investment_id=investment.id,
+            date=d,
+            price=close,
+            currency=investment.currency,
+        ))
+        existing.add(d.date())
+        added += 1
+
+    db.commit()
+    logger.info(f"Backfill {investment.ticker}: {added} koersen toegevoegd ({period})")
+    return {"added": added}
+
+
 def get_stats() -> dict:
     """Geef update statistieken terug."""
     return _stats.copy()
