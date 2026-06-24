@@ -263,16 +263,26 @@ export default function PortfolioPage() {
                       <td className="mono" style={{ textAlign: 'right' }}>{fmtCurrency(inv.current_value)}</td>
                       <td style={{ textAlign: 'right' }}>
                         {inv.day_change_pct != null ? (
-                          <span className={`badge ${dayGain ? 'badge-gain' : 'badge-loss'}`}>
-                            {dayGain ? '+' : ''}{inv.day_change_pct.toFixed(2)}%
-                          </span>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                            <span className="mono" style={{ color: dayGain ? 'var(--color-gain)' : 'var(--color-loss)' }}>
+                              {dayGain ? '+' : ''}{fmtCurrency(inv.day_change)}
+                            </span>
+                            <span className={`badge ${dayGain ? 'badge-gain' : 'badge-loss'}`}>
+                              {dayGain ? '+' : ''}{inv.day_change_pct.toFixed(2)}%
+                            </span>
+                          </div>
                         ) : '—'}
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         {inv.total_return_pct != null ? (
-                          <span className={`badge ${isGain ? 'badge-gain' : 'badge-loss'}`}>
-                            {isGain ? '+' : ''}{inv.total_return_pct.toFixed(2)}%
-                          </span>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                            <span className="mono" style={{ color: isGain ? 'var(--color-gain)' : 'var(--color-loss)' }}>
+                              {isGain ? '+' : ''}{fmtCurrency(inv.total_return)}
+                            </span>
+                            <span className={`badge ${isGain ? 'badge-gain' : 'badge-loss'}`}>
+                              {isGain ? '+' : ''}{inv.total_return_pct.toFixed(2)}%
+                            </span>
+                          </div>
                         ) : '—'}
                       </td>
                       <td onClick={e => e.stopPropagation()}>
