@@ -45,6 +45,8 @@ export interface Investment {
   current_value?: number
   total_return?: number
   total_return_pct?: number
+  day_change?: number
+  day_change_pct?: number
 }
 
 export interface PriceHistory {

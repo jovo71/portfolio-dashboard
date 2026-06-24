@@ -53,6 +53,8 @@ class InvestmentResponse(InvestmentBase):
     current_value: Optional[float] = None
     total_return: Optional[float] = None
     total_return_pct: Optional[float] = None
+    day_change: Optional[float] = None
+    day_change_pct: Optional[float] = None
 
     class Config:
         from_attributes = True

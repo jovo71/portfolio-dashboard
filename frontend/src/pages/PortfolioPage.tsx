@@ -8,13 +8,13 @@ const BROKERS = ['DeGiro', 'Rabobank', 'Andere']
 const CURRENCIES = ['EUR', 'USD', 'GBP', 'CHF']
 
 type FormData = {
-  name: string; isin: string; ticker: string; broker: string
+  name: string; ticker: string; broker: string
   quantity: string; average_purchase_price: string; currency: string
   purchase_date: string; management_fee_percentage: string
 }
 
 const EMPTY_FORM: FormData = {
-  name: '', isin: '', ticker: '', broker: 'DeGiro',
+  name: '', ticker: '', broker: 'DeGiro',
   quantity: '', average_purchase_price: '', currency: 'EUR',
   purchase_date: '', management_fee_percentage: '0',
 }
@@ -57,7 +57,6 @@ export default function PortfolioPage() {
     setEditing(inv)
     setForm({
       name: inv.name,
-      isin: inv.isin ?? '',
       ticker: inv.ticker ?? '',
       broker: inv.broker ?? 'DeGiro',
       quantity: String(inv.quantity),
@@ -78,7 +77,6 @@ export default function PortfolioPage() {
     try {
       const payload = {
         name: form.name,
-        isin: form.isin || undefined,
         ticker: form.ticker || undefined,
         broker: form.broker || undefined,
         quantity: parseFloat(form.quantity),
@@ -172,14 +170,14 @@ export default function PortfolioPage() {
               <thead>
                 <tr>
                   <th>Naam</th>
-                  <th>ISIN</th>
                   <th>Ticker</th>
                   <th>Broker</th>
                   <th style={{ textAlign: 'right' }}>Stuks</th>
                   <th style={{ textAlign: 'right' }}>Aankoopprijs</th>
                   <th style={{ textAlign: 'right' }}>Koers</th>
                   <th style={{ textAlign: 'right' }}>Waarde</th>
-                  <th style={{ textAlign: 'right' }}>Rendement</th>
+                  <th style={{ textAlign: 'right' }}>Vandaag</th>
+                  <th style={{ textAlign: 'right' }}>Totaal</th>
                   <th>Acties</th>
                 </tr>
               </thead>
@@ -190,10 +188,10 @@ export default function PortfolioPage() {
                   </td></tr>
                 ) : investments.map(inv => {
                   const isGain = (inv.total_return_pct ?? 0) >= 0
+                  const dayGain = (inv.day_change_pct ?? 0) >= 0
                   return (
                     <tr key={inv.id}>
                       <td style={{ fontWeight: 500 }}>{inv.name}</td>
-                      <td className="mono" style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{inv.isin ?? '—'}</td>
                       <td className="mono">{inv.ticker ?? '—'}</td>
                       <td>
                         <span className={`${styles.brokerBadge} ${inv.broker === 'DeGiro' ? styles.degiro : styles.rabobank}`}>
@@ -204,6 +202,13 @@ export default function PortfolioPage() {
                       <td className="mono" style={{ textAlign: 'right' }}>{fmtCurrency(inv.average_purchase_price)}</td>
                       <td className="mono" style={{ textAlign: 'right' }}>{fmtCurrency(inv.current_price)}</td>
                       <td className="mono" style={{ textAlign: 'right' }}>{fmtCurrency(inv.current_value)}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        {inv.day_change_pct != null ? (
+                          <span className={`badge ${dayGain ? 'badge-gain' : 'badge-loss'}`}>
+                            {dayGain ? '+' : ''}{inv.day_change_pct.toFixed(2)}%
+                          </span>
+                        ) : '—'}
+                      </td>
                       <td style={{ textAlign: 'right' }}>
                         {inv.total_return_pct != null ? (
                           <span className={`badge ${isGain ? 'badge-gain' : 'badge-loss'}`}>
@@ -242,10 +247,6 @@ export default function PortfolioPage() {
                 <div className="form-group" style={{ gridColumn: 'span 2' }}>
                   <label className="form-label">Naam *</label>
                   <input className="form-control" value={form.name} onChange={setField('name')} placeholder="bijv. VWRL ETF" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">ISIN</label>
-                  <input className="form-control" value={form.isin} onChange={setField('isin')} placeholder="IE00B3RBWM25" />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Ticker</label>

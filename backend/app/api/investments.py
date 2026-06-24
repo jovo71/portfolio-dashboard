@@ -11,7 +11,7 @@ from app.database import get_db
 from app.auth import get_current_user
 from app.models import Investment
 from app.schemas import InvestmentCreate, InvestmentUpdate, InvestmentResponse
-from app.services.price_service import get_latest_price
+from app.services.price_service import get_latest_price, get_previous_close
 
 router = APIRouter()
 
@@ -22,9 +22,18 @@ def enrich_investment(inv: Investment, db: Session) -> dict:
     current_price = latest.price if latest else None
     current_value = current_price * inv.quantity if current_price else None
     purchase_value = inv.average_purchase_price * inv.quantity
-    
+
     total_return = (current_value - purchase_value) if current_value else None
     total_return_pct = (total_return / purchase_value * 100) if (total_return is not None and purchase_value > 0) else None
+
+    # Dagrendement: verschil t.o.v. de laatste koers van een eerdere dag.
+    day_change = None
+    day_change_pct = None
+    if latest and current_price:
+        previous = get_previous_close(db, inv.id, latest.date)
+        if previous and previous.price:
+            day_change = (current_price - previous.price) * inv.quantity
+            day_change_pct = (current_price - previous.price) / previous.price * 100
 
     return {
         **inv.__dict__,
@@ -32,6 +41,8 @@ def enrich_investment(inv: Investment, db: Session) -> dict:
         "current_value": current_value,
         "total_return": total_return,
         "total_return_pct": total_return_pct,
+        "day_change": day_change,
+        "day_change_pct": day_change_pct,
     }
 
 

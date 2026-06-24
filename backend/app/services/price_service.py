@@ -1,6 +1,6 @@
 """Koersophaling service via Yahoo Finance."""
 import yfinance as yf
-from datetime import datetime
+from datetime import datetime, time
 from sqlalchemy.orm import Session
 from typing import Optional
 import logging
@@ -91,6 +91,22 @@ def get_latest_price(db: Session, investment_id: int) -> Optional[PriceHistory]:
     return (
         db.query(PriceHistory)
         .filter(PriceHistory.investment_id == investment_id)
+        .order_by(PriceHistory.date.desc())
+        .first()
+    )
+
+
+def get_previous_close(db: Session, investment_id: int, before: datetime) -> Optional[PriceHistory]:
+    """Geef de laatste koers van vóór de kalenderdag van `before`.
+
+    Wordt gebruikt voor het dagrendement: de meest recente koers van een
+    eerdere dag dan de laatst bekende koers.
+    """
+    day_start = datetime.combine(before.date(), time.min)
+    return (
+        db.query(PriceHistory)
+        .filter(PriceHistory.investment_id == investment_id)
+        .filter(PriceHistory.date < day_start)
         .order_by(PriceHistory.date.desc())
         .first()
     )
