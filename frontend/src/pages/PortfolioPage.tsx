@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { Plus, Edit2, Trash2, Upload, Download } from 'lucide-react'
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import toast from 'react-hot-toast'
-import { investmentsApi, Investment } from '../api'
+import { investmentsApi, pricesApi, Investment, PriceHistory } from '../api'
+import { format } from 'date-fns'
+import { nl } from 'date-fns/locale'
 import styles from './PortfolioPage.module.css'
 
 const BROKERS = ['DeGiro', 'Rabobank', 'Andere']
@@ -32,6 +35,9 @@ export default function PortfolioPage() {
   const [form, setForm] = useState<FormData>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const [chartInv, setChartInv] = useState<Investment | null>(null)
+  const [chartData, setChartData] = useState<{ date: string; price: number }[]>([])
+  const [chartLoading, setChartLoading] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -98,6 +104,25 @@ export default function PortfolioPage() {
       toast.error('Opslaan mislukt')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function openChart(inv: Investment) {
+    setChartInv(inv)
+    setChartData([])
+    setChartLoading(true)
+    try {
+      const resp = await pricesApi.history(inv.id)
+      // backend levert aflopend op datum; omdraaien voor de grafiek
+      const points = resp.data
+        .slice()
+        .reverse()
+        .map((p: PriceHistory) => ({ date: p.date, price: p.price }))
+      setChartData(points)
+    } catch {
+      toast.error('Koershistorie ophalen mislukt')
+    } finally {
+      setChartLoading(false)
     }
   }
 
@@ -190,7 +215,7 @@ export default function PortfolioPage() {
                   const isGain = (inv.total_return_pct ?? 0) >= 0
                   const dayGain = (inv.day_change_pct ?? 0) >= 0
                   return (
-                    <tr key={inv.id}>
+                    <tr key={inv.id} onClick={() => openChart(inv)} style={{ cursor: 'pointer' }} title="Klik voor koershistorie">
                       <td style={{ fontWeight: 500 }}>{inv.name}</td>
                       <td className="mono">{inv.ticker ?? '—'}</td>
                       <td>
@@ -216,7 +241,7 @@ export default function PortfolioPage() {
                           </span>
                         ) : '—'}
                       </td>
-                      <td>
+                      <td onClick={e => e.stopPropagation()}>
                         <div style={{ display: 'flex', gap: 4 }}>
                           <button className="btn btn-secondary btn-sm btn-icon" onClick={() => openEdit(inv)}>
                             <Edit2 size={12} />
@@ -231,6 +256,50 @@ export default function PortfolioPage() {
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {chartInv && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setChartInv(null)}>
+          <div className="modal" style={{ width: 'min(720px, 92vw)', maxWidth: 'none' }}>
+            <div className="modal-header">
+              <h3>Koershistorie — {chartInv.name}</h3>
+              <button className="btn btn-secondary btn-sm btn-icon" onClick={() => setChartInv(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              {chartLoading ? (
+                <div className="loading"><div className="spinner" /> Laden…</div>
+              ) : chartData.length === 0 ? (
+                <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '40px 0' }}>
+                  Nog geen koershistorie beschikbaar voor deze belegging.
+                </p>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <AreaChart data={chartData}>
+                    <defs>
+                      <linearGradient id="histGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#388bfd" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#388bfd" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                      tickFormatter={d => {
+                        try { return format(new Date(d), 'dd MMM', { locale: nl }) } catch { return d }
+                      }} />
+                    <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                      tickFormatter={v => fmtCurrency(v)} width={80} />
+                    <Tooltip
+                      labelFormatter={d => {
+                        try { return format(new Date(d as string), 'dd MMM yyyy HH:mm', { locale: nl }) } catch { return String(d) }
+                      }}
+                      formatter={(v: number) => [fmtCurrency(v), 'Koers']} />
+                    <Area type="monotone" dataKey="price" name="Koers"
+                      stroke="#388bfd" fill="url(#histGrad)" strokeWidth={2} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </div>
           </div>
         </div>
       )}
