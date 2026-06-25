@@ -47,6 +47,7 @@ export interface Investment {
   total_return_pct?: number
   day_change?: number
   day_change_pct?: number
+  price_updated_at?: string
 }
 
 export interface PriceHistory {

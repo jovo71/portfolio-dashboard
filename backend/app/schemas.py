@@ -55,6 +55,7 @@ class InvestmentResponse(InvestmentBase):
     total_return_pct: Optional[float] = None
     day_change: Optional[float] = None
     day_change_pct: Optional[float] = None
+    price_updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

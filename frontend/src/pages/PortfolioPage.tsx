@@ -248,8 +248,14 @@ export default function PortfolioPage() {
                 ) : investments.map(inv => {
                   const isGain = (inv.total_return_pct ?? 0) >= 0
                   const dayGain = (inv.day_change_pct ?? 0) >= 0
+                  let updatedLabel = 'Nog geen koersdata opgehaald'
+                  if (inv.price_updated_at) {
+                    try {
+                      updatedLabel = `Koers laatst bijgewerkt: ${format(new Date(inv.price_updated_at), 'dd MMM yyyy HH:mm', { locale: nl })}`
+                    } catch { updatedLabel = `Koers laatst bijgewerkt: ${inv.price_updated_at}` }
+                  }
                   return (
-                    <tr key={inv.id} onClick={() => openChart(inv)} style={{ cursor: 'pointer' }} title="Klik voor koershistorie">
+                    <tr key={inv.id} onClick={() => openChart(inv)} style={{ cursor: 'pointer' }} title={`${updatedLabel} · klik voor koershistorie`}>
                       <td style={{ fontWeight: 500 }}>{inv.name}</td>
                       <td className="mono">{inv.ticker ?? '—'}</td>
                       <td>

@@ -43,6 +43,7 @@ def enrich_investment(inv: Investment, db: Session) -> dict:
         "total_return_pct": total_return_pct,
         "day_change": day_change,
         "day_change_pct": day_change_pct,
+        "price_updated_at": latest.date if latest else None,
     }
 
 
