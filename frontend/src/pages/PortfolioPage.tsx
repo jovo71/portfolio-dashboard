@@ -233,7 +233,7 @@ export default function PortfolioPage() {
               <thead>
                 <tr>
                   <th>Naam</th>
-                  <th>Ticker</th>
+                  <th>Ticker / ISIN</th>
                   <th>Broker</th>
                   <th style={{ textAlign: 'right' }}>Stuks</th>
                   <th style={{ textAlign: 'right' }}>Aankoopprijs</th>
