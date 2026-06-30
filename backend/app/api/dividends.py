@@ -6,7 +6,7 @@ from typing import List
 
 from app.database import get_db
 from app.auth import get_current_user
-from app.models import Dividend
+from app.models import Dividend, Investment
 from app.schemas import DividendCreate, DividendResponse
 
 router = APIRouter()
@@ -15,12 +15,15 @@ router = APIRouter()
 @router.get("/", response_model=List[DividendResponse])
 def list_dividends(
     investment_id: int = None,
+    portfolio_id: int = None,
     db: Session = Depends(get_db),
     user: str = Depends(get_current_user),
 ):
     query = db.query(Dividend)
     if investment_id:
         query = query.filter(Dividend.investment_id == investment_id)
+    if portfolio_id:
+        query = query.join(Investment).filter(Investment.portfolio_id == portfolio_id)
     return query.order_by(Dividend.payment_date.desc()).all()
 
 
@@ -51,21 +54,25 @@ def delete_dividend(
 
 
 @router.get("/summary")
-def dividend_summary(db: Session = Depends(get_db), user: str = Depends(get_current_user)):
+def dividend_summary(
+    portfolio_id: int = None,
+    db: Session = Depends(get_db),
+    user: str = Depends(get_current_user),
+):
     """Totaal dividend per jaar en per belegging."""
     from sqlalchemy import extract
-    
-    yearly = (
-        db.query(
-            extract("year", Dividend.payment_date).label("year"),
-            func.sum(Dividend.total_amount).label("total"),
-        )
-        .group_by("year")
-        .order_by("year")
-        .all()
+
+    yearly_q = db.query(
+        extract("year", Dividend.payment_date).label("year"),
+        func.sum(Dividend.total_amount).label("total"),
     )
-    
-    total = db.query(func.sum(Dividend.total_amount)).scalar() or 0.0
+    total_q = db.query(func.sum(Dividend.total_amount))
+    if portfolio_id:
+        yearly_q = yearly_q.join(Investment).filter(Investment.portfolio_id == portfolio_id)
+        total_q = total_q.join(Investment).filter(Investment.portfolio_id == portfolio_id)
+
+    yearly = yearly_q.group_by("year").order_by("year").all()
+    total = total_q.scalar() or 0.0
     
     return {
         "total": total,

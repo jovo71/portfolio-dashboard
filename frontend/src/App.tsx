@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import Layout from './components/Layout'
+import { PortfolioProvider } from './PortfolioContext'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import PortfolioPage from './pages/PortfolioPage'
@@ -31,7 +32,9 @@ export default function App() {
         path="/"
         element={
           <RequireAuth>
-            <Layout theme={theme} toggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} />
+            <PortfolioProvider>
+              <Layout theme={theme} toggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} />
+            </PortfolioProvider>
           </RequireAuth>
         }
       >

@@ -3,6 +3,7 @@ import { Plus, Edit2, Trash2, Upload, Download } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import toast from 'react-hot-toast'
 import { investmentsApi, pricesApi, Investment, PriceHistory } from '../api'
+import { usePortfolio } from '../PortfolioContext'
 import { format } from 'date-fns'
 import { nl } from 'date-fns/locale'
 import styles from './PortfolioPage.module.css'
@@ -40,11 +41,13 @@ export default function PortfolioPage() {
   const [chartLoading, setChartLoading] = useState(false)
   const [chartPeriod, setChartPeriod] = useState<'1m' | '3m' | '1y'>('1y')
   const [backfilling, setBackfilling] = useState(false)
+  const { selectedId } = usePortfolio()
 
   async function load() {
+    if (selectedId == null) return
     setLoading(true)
     try {
-      const resp = await investmentsApi.list()
+      const resp = await investmentsApi.list(selectedId)
       setInvestments(resp.data)
     } catch {
       toast.error('Fout bij laden van beleggingen')
@@ -53,7 +56,7 @@ export default function PortfolioPage() {
     }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [selectedId])
 
   function openNew() {
     setEditing(null)
@@ -85,6 +88,7 @@ export default function PortfolioPage() {
     try {
       const payload = {
         name: form.name,
+        portfolio_id: selectedId ?? undefined,
         ticker: form.ticker || undefined,
         broker: form.broker || undefined,
         quantity: parseFloat(form.quantity),
@@ -179,7 +183,7 @@ export default function PortfolioPage() {
     const file = e.target.files?.[0]
     if (!file) return
     try {
-      const resp = await investmentsApi.importCsv(file)
+      const resp = await investmentsApi.importCsv(file, selectedId ?? undefined)
       toast.success(`${resp.data.imported} beleggingen geïmporteerd`)
       if (resp.data.errors?.length) {
         toast.error(`${resp.data.errors.length} fouten bij import`)
@@ -192,7 +196,7 @@ export default function PortfolioPage() {
 
   async function exportCsv() {
     try {
-      const resp = await investmentsApi.exportCsv()
+      const resp = await investmentsApi.exportCsv(selectedId ?? undefined)
       const url = URL.createObjectURL(new Blob([resp.data]))
       const a = document.createElement('a')
       a.href = url

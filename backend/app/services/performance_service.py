@@ -49,10 +49,14 @@ def calculate_portfolio_performance(
     period: str = "ytd",
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
+    portfolio_id: Optional[int] = None,
 ) -> dict:
     """Bereken portfolio performance voor een periode."""
     period_start, period_end = get_period_dates(period, start_date, end_date)
-    investments = db.query(Investment).all()
+    inv_query = db.query(Investment)
+    if portfolio_id:
+        inv_query = inv_query.filter(Investment.portfolio_id == portfolio_id)
+    investments = inv_query.all()
 
     total_current_value = 0.0
     total_purchase_value = 0.0
@@ -164,9 +168,12 @@ def calculate_portfolio_performance(
     }
 
 
-def get_portfolio_history(db: Session, days: int = 365) -> List[Dict]:
+def get_portfolio_history(db: Session, days: int = 365, portfolio_id: Optional[int] = None) -> List[Dict]:
     """Geef historische portefeuillewaarde per dag."""
-    investments = db.query(Investment).all()
+    inv_query = db.query(Investment)
+    if portfolio_id:
+        inv_query = inv_query.filter(Investment.portfolio_id == portfolio_id)
+    investments = inv_query.all()
     if not investments:
         return []
 

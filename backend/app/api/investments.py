@@ -48,10 +48,22 @@ def enrich_investment(inv: Investment, db: Session) -> dict:
 
 
 @router.get("/", response_model=List[InvestmentResponse])
-def list_investments(db: Session = Depends(get_db), user: str = Depends(get_current_user)):
-    """Haal alle beleggingen op."""
-    investments = db.query(Investment).all()
-    return [enrich_investment(inv, db) for inv in investments]
+def list_investments(
+    portfolio_id: int = None,
+    db: Session = Depends(get_db),
+    user: str = Depends(get_current_user),
+):
+    """Haal alle beleggingen op, optioneel gefilterd op portfolio."""
+    query = db.query(Investment)
+    if portfolio_id:
+        query = query.filter(Investment.portfolio_id == portfolio_id)
+    return [enrich_investment(inv, db) for inv in query.all()]
+
+
+def _default_portfolio_id(db: Session) -> int:
+    from app.models import Portfolio
+    p = db.query(Portfolio).order_by(Portfolio.id).first()
+    return p.id if p else None
 
 
 @router.post("/", response_model=InvestmentResponse, status_code=201)
@@ -61,7 +73,10 @@ def create_investment(
     user: str = Depends(get_current_user),
 ):
     """Voeg een nieuwe belegging toe."""
-    inv = Investment(**data.model_dump())
+    payload = data.model_dump()
+    if not payload.get("portfolio_id"):
+        payload["portfolio_id"] = _default_portfolio_id(db)
+    inv = Investment(**payload)
     db.add(inv)
     db.commit()
     db.refresh(inv)
@@ -118,19 +133,22 @@ def delete_investment(
 @router.post("/import/csv")
 def import_csv(
     file: UploadFile = File(...),
+    portfolio_id: int = None,
     db: Session = Depends(get_db),
     user: str = Depends(get_current_user),
 ):
-    """Importeer beleggingen via CSV."""
+    """Importeer beleggingen via CSV (in het opgegeven portfolio)."""
     content = file.file.read().decode("utf-8")
     reader = csv.DictReader(io.StringIO(content))
-    
+
+    target_portfolio = portfolio_id or _default_portfolio_id(db)
     imported = 0
     errors = []
-    
+
     for i, row in enumerate(reader):
         try:
             inv = Investment(
+                portfolio_id=target_portfolio,
                 name=row.get("naam") or row.get("name", ""),
                 isin=row.get("isin"),
                 ticker=row.get("ticker"),
@@ -151,9 +169,16 @@ def import_csv(
 
 
 @router.get("/export/csv")
-def export_csv(db: Session = Depends(get_db), user: str = Depends(get_current_user)):
-    """Exporteer beleggingen als CSV."""
-    investments = db.query(Investment).all()
+def export_csv(
+    portfolio_id: int = None,
+    db: Session = Depends(get_db),
+    user: str = Depends(get_current_user),
+):
+    """Exporteer beleggingen als CSV (optioneel gefilterd op portfolio)."""
+    query = db.query(Investment)
+    if portfolio_id:
+        query = query.filter(Investment.portfolio_id == portfolio_id)
+    investments = query.all()
     
     output = io.StringIO()
     writer = csv.writer(output)

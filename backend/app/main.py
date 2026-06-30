@@ -8,9 +8,11 @@ import logging
 import os
 import subprocess
 
+from sqlalchemy import inspect, text
+
 from app.database import engine, Base, SessionLocal
-from app.models import SystemLog
-from app.api import auth, investments, prices, dividends, costs, performance, system
+from app.models import SystemLog, Portfolio, Investment
+from app.api import auth, investments, prices, dividends, costs, performance, system, portfolios
 from app.services.scheduler import start_scheduler, stop_scheduler
 
 logging.basicConfig(
@@ -20,6 +22,41 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 APP_DIR = os.getenv("APP_DIR", "/opt/portfolio-dashboard")
+
+
+def _migrate_portfolios():
+    """Voeg portfolio-ondersteuning toe aan een bestaande database.
+
+    - voegt de kolom investments.portfolio_id toe als die ontbreekt;
+    - zorgt voor een standaard-portfolio 'Hoofdportefeuille';
+    - wijst losse beleggingen (zonder portfolio) aan dat portfolio toe.
+    """
+    insp = inspect(engine)
+    cols = [c["name"] for c in insp.get_columns("investments")]
+    if "portfolio_id" not in cols:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE investments ADD COLUMN portfolio_id INTEGER"))
+        logger.info("Migratie: kolom investments.portfolio_id toegevoegd")
+
+    db = SessionLocal()
+    try:
+        default = db.query(Portfolio).order_by(Portfolio.id).first()
+        if not default:
+            default = Portfolio(name="Hoofdportefeuille")
+            db.add(default)
+            db.commit()
+            db.refresh(default)
+            logger.info("Migratie: standaard-portfolio 'Hoofdportefeuille' aangemaakt")
+        orphans = (
+            db.query(Investment)
+            .filter(Investment.portfolio_id.is_(None))
+            .update({Investment.portfolio_id: default.id})
+        )
+        if orphans:
+            db.commit()
+            logger.info(f"Migratie: {orphans} beleggingen toegewezen aan '{default.name}'")
+    finally:
+        db.close()
 
 
 def _log_deploy_completed():
@@ -55,6 +92,7 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
     logger.info("Starting Portfolio Dashboard API")
     Base.metadata.create_all(bind=engine)
+    _migrate_portfolios()
     _log_deploy_completed()
     start_scheduler()
     yield
@@ -79,6 +117,7 @@ app.add_middleware(
 
 # Routers
 app.include_router(auth.router, prefix="/api/auth", tags=["Authenticatie"])
+app.include_router(portfolios.router, prefix="/api/portfolios", tags=["Portfolio's"])
 app.include_router(investments.router, prefix="/api/investments", tags=["Beleggingen"])
 app.include_router(prices.router, prefix="/api/prices", tags=["Koersen"])
 app.include_router(dividends.router, prefix="/api/dividends", tags=["Dividend"])

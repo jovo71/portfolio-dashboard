@@ -15,10 +15,21 @@ class CostType(str, enum.Enum):
     OVERIG = "overige kosten"
 
 
+class Portfolio(Base):
+    __tablename__ = "portfolios"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    investments = relationship("Investment", back_populates="portfolio")
+
+
 class Investment(Base):
     __tablename__ = "investments"
 
     id = Column(Integer, primary_key=True, index=True)
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id"), index=True)
     name = Column(String, nullable=False)
     isin = Column(String, index=True)
     ticker = Column(String, index=True)
@@ -31,6 +42,7 @@ class Investment(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
+    portfolio = relationship("Portfolio", back_populates="investments")
     price_history = relationship("PriceHistory", back_populates="investment", cascade="all, delete-orphan")
     dividends = relationship("Dividend", back_populates="investment", cascade="all, delete-orphan")
     cost_entries = relationship("CostEntry", back_populates="investment", cascade="all, delete-orphan")

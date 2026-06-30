@@ -16,9 +16,28 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+# Portfolio
+class PortfolioBase(BaseModel):
+    name: str
+
+
+class PortfolioCreate(PortfolioBase):
+    pass
+
+
+class PortfolioResponse(PortfolioBase):
+    id: int
+    created_at: datetime
+    num_investments: int = 0
+
+    class Config:
+        from_attributes = True
+
+
 # Investment
 class InvestmentBase(BaseModel):
     name: str
+    portfolio_id: Optional[int] = None
     isin: Optional[str] = None
     ticker: Optional[str] = None
     broker: Optional[str] = None
@@ -35,6 +54,7 @@ class InvestmentCreate(InvestmentBase):
 
 class InvestmentUpdate(BaseModel):
     name: Optional[str] = None
+    portfolio_id: Optional[int] = None
     isin: Optional[str] = None
     ticker: Optional[str] = None
     broker: Optional[str] = None
@@ -47,6 +67,7 @@ class InvestmentUpdate(BaseModel):
 
 class InvestmentResponse(InvestmentBase):
     id: int
+    portfolio_id: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
     current_price: Optional[float] = None

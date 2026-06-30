@@ -3,6 +3,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import toast from 'react-hot-toast'
 import { costsApi, investmentsApi, CostEntry, Investment } from '../api'
+import { usePortfolio } from '../PortfolioContext'
 
 const COST_TYPES = ['beheerskosten', 'servicekosten', 'transactiekosten', 'bewaarkosten', 'overige kosten']
 
@@ -19,12 +20,14 @@ export default function CostsPage() {
   const [form, setForm] = useState({
     investment_id: '', cost_type: 'beheerskosten', amount: '', date: '', description: '',
   })
+  const { selectedId } = usePortfolio()
 
   async function load() {
+    if (selectedId == null) return
     setLoading(true)
     try {
       const [costResp, invResp, sumResp] = await Promise.all([
-        costsApi.list(), investmentsApi.list(), costsApi.summary(),
+        costsApi.list({ portfolioId: selectedId }), investmentsApi.list(selectedId), costsApi.summary(selectedId),
       ])
       setCosts(costResp.data)
       setInvestments(invResp.data)
@@ -33,7 +36,7 @@ export default function CostsPage() {
     finally { setLoading(false) }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [selectedId])
 
   async function save() {
     try {

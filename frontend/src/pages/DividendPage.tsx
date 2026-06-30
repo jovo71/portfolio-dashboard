@@ -3,6 +3,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import toast from 'react-hot-toast'
 import { dividendsApi, investmentsApi, Dividend, Investment } from '../api'
+import { usePortfolio } from '../PortfolioContext'
 
 function fmtCurrency(v: number) {
   return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(v)
@@ -17,14 +18,16 @@ export default function DividendPage() {
   const [form, setForm] = useState({
     investment_id: '', payment_date: '', amount_per_share: '', total_amount: '', currency: 'EUR',
   })
+  const { selectedId } = usePortfolio()
 
   async function load() {
+    if (selectedId == null) return
     setLoading(true)
     try {
       const [divResp, invResp, sumResp] = await Promise.all([
-        dividendsApi.list(),
-        investmentsApi.list(),
-        dividendsApi.summary(),
+        dividendsApi.list({ portfolioId: selectedId }),
+        investmentsApi.list(selectedId),
+        dividendsApi.summary(selectedId),
       ])
       setDividends(divResp.data)
       setInvestments(invResp.data)
@@ -36,7 +39,7 @@ export default function DividendPage() {
     }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [selectedId])
 
   async function save() {
     try {

@@ -6,6 +6,7 @@ import {
 } from 'recharts'
 import toast from 'react-hot-toast'
 import { performanceApi, pricesApi, PerformanceData } from '../api'
+import { usePortfolio } from '../PortfolioContext'
 import styles from './DashboardPage.module.css'
 import { format } from 'date-fns'
 import { nl } from 'date-fns/locale'
@@ -46,13 +47,15 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [lastUpdate, setLastUpdate] = useState<string | null>(null)
+  const { selectedId } = usePortfolio()
 
   async function loadData() {
+    if (selectedId == null) return
     setLoading(true)
     try {
       const [perfResp, histResp] = await Promise.all([
-        performanceApi.get(period, startDate || undefined, endDate || undefined),
-        performanceApi.history(365),
+        performanceApi.get(period, startDate || undefined, endDate || undefined, selectedId),
+        performanceApi.history(365, selectedId),
       ])
       setData(perfResp.data)
       setHistory(histResp.data)
@@ -77,7 +80,7 @@ export default function DashboardPage() {
     }
   }
 
-  useEffect(() => { loadData() }, [period, startDate, endDate])
+  useEffect(() => { loadData() }, [period, startDate, endDate, selectedId])
 
   const s = data?.summary
   const isGain = (v?: number) => (v ?? 0) >= 0
