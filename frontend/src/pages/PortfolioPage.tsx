@@ -141,6 +141,8 @@ export default function PortfolioPage() {
       if (resp.data.added > 0) {
         toast.success(`${resp.data.added} historische koersen opgehaald`)
         await loadChartData(chartInv.id)
+      } else if (resp.data.reason === 'northern_trust_geen_historie') {
+        toast('Northern Trust-fondsen kennen geen historie via de bron; de grafiek vult zich dagelijks vanzelf aan')
       } else {
         toast(resp.data.reason === 'geen ticker'
           ? 'Geen ticker ingesteld voor deze belegging'
@@ -389,8 +391,11 @@ export default function PortfolioPage() {
                   <input className="form-control" value={form.name} onChange={setField('name')} placeholder="bijv. VWRL ETF" />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Ticker</label>
-                  <input className="form-control" value={form.ticker} onChange={setField('ticker')} placeholder="VWRL.AS" />
+                  <label className="form-label">Ticker / ISIN</label>
+                  <input className="form-control" value={form.ticker} onChange={setField('ticker')} placeholder="VWRL.AS of NL0011225305" />
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    Yahoo-ticker (bijv. VWRL.AS) of ISIN voor Northern Trust FGR-fondsen
+                  </span>
                 </div>
                 <div className="form-group">
                   <label className="form-label">Broker</label>

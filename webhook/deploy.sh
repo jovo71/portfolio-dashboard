@@ -13,6 +13,9 @@ BRANCH="${BRANCH:-main}"
 echo "[deploy] Nieuwste code ophalen (git pull origin $BRANCH)..."
 git -C "$APP_DIR" pull origin "$BRANCH"
 
+echo "[deploy] Backend dependencies bijwerken..."
+"$APP_DIR/backend/venv/bin/pip" install -q -r "$APP_DIR/backend/requirements.txt"
+
 echo "[deploy] Frontend bouwen..."
 cd "$APP_DIR/frontend"
 npm ci --silent

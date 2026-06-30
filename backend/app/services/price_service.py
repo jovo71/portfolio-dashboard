@@ -1,5 +1,8 @@
-"""Koersophaling service via Yahoo Finance."""
+"""Koersophaling service via Yahoo Finance en Northern Trust FGR."""
+import os
+import re
 import yfinance as yf
+import requests
 from datetime import datetime, time
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -10,6 +13,59 @@ from app.database import SessionLocal
 
 logger = logging.getLogger(__name__)
 
+# Northern Trust FGR — publieke NAV-API (gesleuteld op ISIN), gebruikt door
+# fgrinvesting.com. Geeft alleen de actuele NAV, geen historische reeks.
+NT_NAV_URL = os.getenv(
+    "NT_NAV_URL",
+    "https://wcv7zjj5dd.execute-api.us-east-1.amazonaws.com/production/fgr-nav-data-test",
+)
+_ISIN_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
+_nt_cache = {"data": None, "fetched": None}
+
+
+def _get_nt_nav_data() -> dict:
+    """Haal de NT NAV-data op (gecachet, 1 uur)."""
+    now = datetime.utcnow()
+    if _nt_cache["data"] is not None and _nt_cache["fetched"] and \
+            (now - _nt_cache["fetched"]).total_seconds() < 3600:
+        return _nt_cache["data"]
+    try:
+        resp = requests.get(NT_NAV_URL, timeout=20)
+        resp.raise_for_status()
+        data = resp.json()
+        _nt_cache["data"] = data
+        _nt_cache["fetched"] = now
+        return data
+    except Exception as e:
+        logger.warning(f"Northern Trust NAV ophalen mislukt: {e}")
+        return _nt_cache["data"] or {}
+
+
+def get_nt_price(isin: str) -> Optional[float]:
+    """Geef de actuele NAV per aandeel voor een Northern Trust FGR-fonds (op ISIN)."""
+    entry = _get_nt_nav_data().get(isin.strip().upper())
+    if not entry:
+        return None
+    try:
+        nav = float(entry.get("nav per share"))
+        return nav if nav > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_nt_ticker(ticker: str) -> Optional[str]:
+    """Geef het ISIN terug als de ticker een Northern Trust FGR-fonds aanduidt.
+
+    Ondersteunt zowel een kaal ISIN (bijv. NL0011225305) als de expliciete
+    'NT:<ISIN>'-notatie.
+    """
+    t = ticker.strip().upper()
+    if t.startswith("NT:"):
+        t = t[3:]
+    if _ISIN_RE.match(t) and t in _get_nt_nav_data():
+        return t
+    return None
+
 # Statistieken bijhouden
 _stats = {
     "successful_updates": 0,
@@ -19,9 +75,15 @@ _stats = {
 
 
 def get_current_price(ticker: str) -> Optional[float]:
-    """Haal actuele koers op voor een ticker via Yahoo Finance."""
+    """Haal actuele koers op voor een ticker (Northern Trust FGR of Yahoo Finance)."""
     if not ticker:
         return None
+
+    # Northern Trust FGR-fonds? (kaal ISIN of 'NT:<ISIN>')
+    nt_isin = _is_nt_ticker(ticker)
+    if nt_isin:
+        return get_nt_price(nt_isin)
+
     try:
         stock = yf.Ticker(ticker)
         info = stock.fast_info
@@ -89,6 +151,9 @@ def backfill_history(db: Session, investment, period: str = "1y") -> dict:
     """
     if not investment.ticker:
         return {"added": 0, "reason": "geen ticker"}
+
+    if _is_nt_ticker(investment.ticker):
+        return {"added": 0, "reason": "northern_trust_geen_historie"}
 
     try:
         hist = yf.Ticker(investment.ticker).history(period=period)
