@@ -143,6 +143,8 @@ export default function PortfolioPage() {
         await loadChartData(chartInv.id)
       } else if (resp.data.reason === 'northern_trust_geen_historie') {
         toast('Northern Trust-fondsen kennen geen historie via de bron; de grafiek vult zich dagelijks vanzelf aan')
+      } else if (resp.data.reason === 'isin_niet_gevonden') {
+        toast('Dit ISIN/ticker werd niet gevonden bij Yahoo Finance')
       } else {
         toast(resp.data.reason === 'geen ticker'
           ? 'Geen ticker ingesteld voor deze belegging'
@@ -394,7 +396,7 @@ export default function PortfolioPage() {
                   <label className="form-label">Ticker / ISIN</label>
                   <input className="form-control" value={form.ticker} onChange={setField('ticker')} placeholder="VWRL.AS of NL0011225305" />
                   <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                    Yahoo-ticker (bijv. VWRL.AS) of ISIN voor Northern Trust FGR-fondsen
+                    Yahoo-ticker (bijv. VWRL.AS) of ISIN (bijv. IE00BF1QPL78) — een ISIN wordt automatisch opgezocht
                   </span>
                 </div>
                 <div className="form-group">

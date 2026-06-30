@@ -66,6 +66,44 @@ def _is_nt_ticker(ticker: str) -> Optional[str]:
         return t
     return None
 
+
+# Yahoo Finance zoek-API: zet een ISIN om naar een beurssymbool (bijv.
+# IE00BF1QPL78 -> SPFE.DE). Resultaten worden voor de procesduur gecachet.
+YAHOO_SEARCH_URL = "https://query1.finance.yahoo.com/v1/finance/search"
+_symbol_cache: dict = {}
+
+
+def resolve_yahoo_symbol(isin: str) -> Optional[str]:
+    """Zoek het Yahoo-beurssymbool bij een ISIN."""
+    key = isin.strip().upper()
+    if key in _symbol_cache:
+        return _symbol_cache[key]
+    symbol = None
+    try:
+        resp = requests.get(
+            YAHOO_SEARCH_URL,
+            params={"q": key, "quotesCount": 5, "newsCount": 0},
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        for q in resp.json().get("quotes", []):
+            if q.get("symbol"):
+                symbol = q["symbol"]
+                break
+    except Exception as e:
+        logger.warning(f"Yahoo symbool-lookup mislukt voor {key}: {e}")
+    _symbol_cache[key] = symbol
+    return symbol
+
+
+def _resolve_yahoo(ticker: str) -> Optional[str]:
+    """Geef het effectieve Yahoo-symbool voor een ingevoerde ticker of ISIN."""
+    t = ticker.strip()
+    if _ISIN_RE.match(t.upper()):
+        return resolve_yahoo_symbol(t)
+    return t
+
 # Statistieken bijhouden
 _stats = {
     "successful_updates": 0,
@@ -84,8 +122,13 @@ def get_current_price(ticker: str) -> Optional[float]:
     if nt_isin:
         return get_nt_price(nt_isin)
 
+    # ISIN van een beursgenoteerd fonds -> via Yahoo naar een symbool
+    symbol = _resolve_yahoo(ticker)
+    if not symbol:
+        return None
+
     try:
-        stock = yf.Ticker(ticker)
+        stock = yf.Ticker(symbol)
         info = stock.fast_info
         price = info.last_price
         if price and price > 0:
@@ -155,8 +198,12 @@ def backfill_history(db: Session, investment, period: str = "1y") -> dict:
     if _is_nt_ticker(investment.ticker):
         return {"added": 0, "reason": "northern_trust_geen_historie"}
 
+    symbol = _resolve_yahoo(investment.ticker)
+    if not symbol:
+        return {"added": 0, "reason": "isin_niet_gevonden"}
+
     try:
-        hist = yf.Ticker(investment.ticker).history(period=period)
+        hist = yf.Ticker(symbol).history(period=period)
     except Exception as e:
         logger.warning(f"Historie ophalen mislukt voor {investment.ticker}: {e}")
         return {"added": 0, "reason": str(e)}
