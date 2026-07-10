@@ -109,6 +109,38 @@ def _chart_closes(result: dict):
     return timestamps, (quote.get("close") or [])
 
 
+# Wisselkoersen naar EUR (bijv. USDEUR=X), gecachet voor 1 uur.
+_fx_cache: dict = {}
+
+
+def get_fx_rate(currency: Optional[str]) -> float:
+    """Geef de wisselkoers van `currency` naar EUR (EUR zelf = 1.0)."""
+    ccy = (currency or "EUR").strip().upper()
+    if ccy == "EUR":
+        return 1.0
+
+    cached = _fx_cache.get(ccy)
+    now = datetime.utcnow()
+    if cached and (now - cached[1]).total_seconds() < 3600:
+        return cached[0]
+
+    try:
+        result = _yahoo_chart(f"{ccy}EUR=X", range_="1d", interval="1d")
+        rate = float((result.get("meta") or {}).get("regularMarketPrice") or 0)
+        if rate > 0:
+            _fx_cache[ccy] = (rate, now)
+            return rate
+        raise ValueError("geen koers")
+    except Exception as e:
+        logger.warning(f"Wisselkoers ophalen mislukt voor {ccy}->EUR: {e}")
+
+    # Val terug op de laatst bekende koers; anders 1.0 (en log dat expliciet).
+    if cached:
+        return cached[0]
+    logger.error(f"Geen wisselkoers voor {ccy}->EUR; reken met 1.0 (waarde kan onjuist zijn)")
+    return 1.0
+
+
 def resolve_yahoo_symbol(isin: str) -> Optional[str]:
     """Zoek het Yahoo-beurssymbool bij een ISIN."""
     key = isin.strip().upper()
@@ -148,15 +180,23 @@ _stats = {
 }
 
 
-def get_current_price(ticker: str) -> Optional[float]:
-    """Haal actuele koers op voor een ticker (Northern Trust FGR of Yahoo Finance)."""
+def get_quote(ticker: str) -> Optional[tuple]:
+    """Geef (koers, valuta) voor een ticker/ISIN, of None.
+
+    De koers is in de eigen valuta van het fonds; omrekenen naar EUR gebeurt
+    pas bij het optellen/weergeven, via get_fx_rate().
+    """
     if not ticker:
         return None
 
     # Northern Trust FGR-fonds? (kaal ISIN of 'NT:<ISIN>')
     nt_isin = _is_nt_ticker(ticker)
     if nt_isin:
-        return get_nt_price(nt_isin)
+        price = get_nt_price(nt_isin)
+        if price is None:
+            return None
+        entry = _get_nt_nav_data().get(nt_isin) or {}
+        return price, (entry.get("currency") or "EUR").upper()
 
     # ISIN van een beursgenoteerd fonds -> via Yahoo naar een symbool
     symbol = _resolve_yahoo(ticker)
@@ -165,18 +205,26 @@ def get_current_price(ticker: str) -> Optional[float]:
 
     try:
         result = _yahoo_chart(symbol, range_="5d", interval="1d")
-        price = (result.get("meta") or {}).get("regularMarketPrice")
+        meta = result.get("meta") or {}
+        currency = (meta.get("currency") or "EUR").upper()
+        price = meta.get("regularMarketPrice")
         if price and float(price) > 0:
-            return float(price)
+            return float(price), currency
         # Fallback: laatste geldige slotkoers uit de reeks
         _, closes = _chart_closes(result)
         for close in reversed(closes):
             if close:
-                return float(close)
+                return float(close), currency
         return None
     except Exception as e:
         logger.warning(f"Koers ophalen mislukt voor {ticker}: {e}")
         return None
+
+
+def get_current_price(ticker: str) -> Optional[float]:
+    """Haal alleen de actuele koers op (in eigen valuta)."""
+    quote = get_quote(ticker)
+    return quote[0] if quote else None
 
 
 def update_all_prices(db: Session) -> dict:
@@ -189,17 +237,18 @@ def update_all_prices(db: Session) -> dict:
             results["skipped"] += 1
             continue
 
-        price = get_current_price(inv.ticker)
-        if price:
+        quote = get_quote(inv.ticker)
+        if quote:
+            price, currency = quote
             history = PriceHistory(
                 investment_id=inv.id,
                 date=datetime.utcnow(),
                 price=price,
-                currency=inv.currency,
+                currency=currency,
             )
             db.add(history)
             results["success"] += 1
-            logger.info(f"Koers bijgewerkt: {inv.name} ({inv.ticker}) = {price}")
+            logger.info(f"Koers bijgewerkt: {inv.name} ({inv.ticker}) = {price} {currency}")
         else:
             results["failed"] += 1
             logger.warning(f"Koers ophalen mislukt voor: {inv.name} ({inv.ticker})")
@@ -248,6 +297,8 @@ def backfill_history(db: Session, investment, period: str = "1y") -> dict:
     if not timestamps:
         return {"added": 0, "reason": "geen data"}
 
+    currency = ((result.get("meta") or {}).get("currency") or investment.currency or "EUR").upper()
+
     existing = {
         p.date.date()
         for p in db.query(PriceHistory)
@@ -266,7 +317,7 @@ def backfill_history(db: Session, investment, period: str = "1y") -> dict:
             investment_id=investment.id,
             date=d,
             price=float(close),
-            currency=investment.currency,
+            currency=currency,
         ))
         existing.add(d.date())
         added += 1

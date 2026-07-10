@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.models import Investment, PriceHistory, Dividend, CostEntry
+from app.services.price_service import get_fx_rate
 
 
 def get_period_dates(period: str, start_date: Optional[date] = None, end_date: Optional[date] = None):
@@ -66,25 +67,34 @@ def calculate_portfolio_performance(
     investment_details = []
 
     for inv in investments:
-        # Huidige koers
+        # Huidige koers (in eigen valuta) + wisselkoersen naar EUR
         latest_price = (
             db.query(PriceHistory)
             .filter(PriceHistory.investment_id == inv.id)
             .order_by(PriceHistory.date.desc())
             .first()
         )
-        current_price = latest_price.price if latest_price else inv.average_purchase_price
-        current_value = current_price * inv.quantity
+        purchase_fx = get_fx_rate(inv.currency)
+        if latest_price:
+            current_price = latest_price.price
+            price_fx = get_fx_rate(latest_price.currency or inv.currency)
+        else:
+            current_price = inv.average_purchase_price
+            price_fx = purchase_fx
 
-        # Aankoopwaarde
-        purchase_value = inv.average_purchase_price * inv.quantity
+        # Alle bedragen in EUR
+        current_value = current_price * inv.quantity * price_fx
+        purchase_value = inv.average_purchase_price * inv.quantity * purchase_fx
 
-        # Startwaarde voor de periode
+        # Startwaarde voor de periode (in EUR)
         if period == "since_purchase" or period_start is None:
             start_value = purchase_value
         else:
             price_at_start = get_price_at_date(db, inv.id, period_start)
-            start_value = (price_at_start or inv.average_purchase_price) * inv.quantity
+            if price_at_start:
+                start_value = price_at_start * inv.quantity * price_fx
+            else:
+                start_value = purchase_value
 
         # Dividend in periode
         div_query = db.query(func.sum(Dividend.total_amount)).filter(
@@ -124,6 +134,7 @@ def calculate_portfolio_performance(
             "broker": inv.broker,
             "quantity": inv.quantity,
             "current_price": current_price,
+            "price_currency": (latest_price.currency if latest_price else inv.currency) or "EUR",
             "current_value": current_value,
             "purchase_value": purchase_value,
             "start_value": start_value,
@@ -189,6 +200,19 @@ def get_portfolio_history(db: Session, days: int = 365, portfolio_id: Optional[i
         .all()
     )
 
+    # Wisselkoers per belegging, op basis van de valuta waarin de koers noteert.
+    # (Historische wisselkoersen worden niet bijgehouden; we rekenen met de actuele.)
+    def _price_currency(inv):
+        row = (
+            db.query(PriceHistory.currency)
+            .filter(PriceHistory.investment_id == inv.id)
+            .order_by(PriceHistory.date.desc())
+            .first()
+        )
+        return (row[0] if row else None) or inv.currency
+
+    fx_by_inv = {inv.id: get_fx_rate(_price_currency(inv)) for inv in investments}
+
     history = []
     for (day,) in dates_with_data:
         if isinstance(day, str):
@@ -197,7 +221,7 @@ def get_portfolio_history(db: Session, days: int = 365, portfolio_id: Optional[i
         for inv in investments:
             price = get_price_at_date(db, inv.id, day)
             if price:
-                total_value += price * inv.quantity
+                total_value += price * inv.quantity * fx_by_inv[inv.id]
         if total_value > 0:
             history.append({"date": day.isoformat(), "value": total_value})
 

@@ -11,17 +11,28 @@ from app.database import get_db
 from app.auth import get_current_user
 from app.models import Investment
 from app.schemas import InvestmentCreate, InvestmentUpdate, InvestmentResponse
-from app.services.price_service import get_latest_price, get_previous_close
+from app.services.price_service import get_latest_price, get_previous_close, get_fx_rate
 
 router = APIRouter()
 
 
 def enrich_investment(inv: Investment, db: Session) -> dict:
-    """Voeg actuele koersdata toe aan belegging."""
+    """Voeg actuele koersdata toe aan belegging.
+
+    De koers blijft in de eigen valuta van het fonds (price_currency).
+    Alle waardes en rendementen worden omgerekend naar EUR, zodat totalen
+    over verschillende valuta's optelbaar zijn.
+    """
     latest = get_latest_price(db, inv.id)
     current_price = latest.price if latest else None
-    current_value = current_price * inv.quantity if current_price else None
-    purchase_value = inv.average_purchase_price * inv.quantity
+    price_currency = (latest.currency if latest else None) or inv.currency or "EUR"
+
+    # Wisselkoersen naar EUR
+    price_fx = get_fx_rate(price_currency) if current_price else 1.0
+    purchase_fx = get_fx_rate(inv.currency)
+
+    current_value = current_price * inv.quantity * price_fx if current_price else None
+    purchase_value = inv.average_purchase_price * inv.quantity * purchase_fx
 
     total_return = (current_value - purchase_value) if current_value else None
     total_return_pct = (total_return / purchase_value * 100) if (total_return is not None and purchase_value > 0) else None
@@ -32,12 +43,13 @@ def enrich_investment(inv: Investment, db: Session) -> dict:
     if latest and current_price:
         previous = get_previous_close(db, inv.id, latest.date)
         if previous and previous.price:
-            day_change = (current_price - previous.price) * inv.quantity
+            day_change = (current_price - previous.price) * inv.quantity * price_fx
             day_change_pct = (current_price - previous.price) / previous.price * 100
 
     return {
         **inv.__dict__,
         "current_price": current_price,
+        "price_currency": price_currency,
         "current_value": current_value,
         "total_return": total_return,
         "total_return_pct": total_return_pct,

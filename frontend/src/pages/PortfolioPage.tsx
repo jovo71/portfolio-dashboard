@@ -23,9 +23,9 @@ const EMPTY_FORM: FormData = {
   purchase_date: '', management_fee_percentage: '0',
 }
 
-function fmtCurrency(v?: number) {
+function fmtCurrency(v?: number, currency = 'EUR') {
   if (v == null) return '—'
-  return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(v)
+  return new Intl.NumberFormat('nl-NL', { style: 'currency', currency }).format(v)
 }
 
 export default function PortfolioPage() {
@@ -242,9 +242,9 @@ export default function PortfolioPage() {
                   <th style={{ textAlign: 'right' }}>Stuks</th>
                   <th style={{ textAlign: 'right' }}>Aankoopprijs</th>
                   <th style={{ textAlign: 'right' }}>Koers</th>
-                  <th style={{ textAlign: 'right' }}>Waarde</th>
-                  <th style={{ textAlign: 'right' }}>Vandaag</th>
-                  <th style={{ textAlign: 'right' }}>Totaal</th>
+                  <th style={{ textAlign: 'right' }} title="Omgerekend naar euro">Waarde (€)</th>
+                  <th style={{ textAlign: 'right' }} title="Omgerekend naar euro">Vandaag (€)</th>
+                  <th style={{ textAlign: 'right' }} title="Omgerekend naar euro">Totaal (€)</th>
                   <th>Acties</th>
                 </tr>
               </thead>
@@ -272,8 +272,8 @@ export default function PortfolioPage() {
                         </span>
                       </td>
                       <td className="mono" style={{ textAlign: 'right' }}>{inv.quantity}</td>
-                      <td className="mono" style={{ textAlign: 'right' }}>{fmtCurrency(inv.average_purchase_price)}</td>
-                      <td className="mono" style={{ textAlign: 'right' }}>{fmtCurrency(inv.current_price)}</td>
+                      <td className="mono" style={{ textAlign: 'right' }}>{fmtCurrency(inv.average_purchase_price, inv.currency)}</td>
+                      <td className="mono" style={{ textAlign: 'right' }}>{fmtCurrency(inv.current_price, inv.price_currency)}</td>
                       <td className="mono" style={{ textAlign: 'right' }}>{fmtCurrency(inv.current_value)}</td>
                       <td style={{ textAlign: 'right' }}>
                         {inv.day_change_pct != null ? (
@@ -367,12 +367,12 @@ export default function PortfolioPage() {
                         try { return format(new Date(d), 'dd MMM', { locale: nl }) } catch { return d }
                       }} />
                     <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
-                      tickFormatter={v => fmtCurrency(v)} width={80} />
+                      tickFormatter={v => fmtCurrency(v, chartInv.price_currency)} width={80} />
                     <Tooltip
                       labelFormatter={d => {
                         try { return format(new Date(d as string), 'dd MMM yyyy HH:mm', { locale: nl }) } catch { return String(d) }
                       }}
-                      formatter={(v: number) => [fmtCurrency(v), 'Koers']} />
+                      formatter={(v: number) => [fmtCurrency(v, chartInv.price_currency), 'Koers']} />
                     <Area type="monotone" dataKey="price" name="Koers"
                       stroke="#388bfd" fill="url(#histGrad)" strokeWidth={2} />
                   </AreaChart>

@@ -29,8 +29,8 @@ function fmt(v: number, decimals = 0) {
   }).format(v)
 }
 
-function fmtCurrency(v: number) {
-  return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(v)
+function fmtCurrency(v: number, currency = 'EUR') {
+  return new Intl.NumberFormat('nl-NL', { style: 'currency', currency }).format(v)
 }
 
 function fmtPct(v: number) {
@@ -341,7 +341,7 @@ export default function DashboardPage() {
                       <td className="mono" style={{ color: 'var(--text-secondary)' }}>{inv.ticker ?? '—'}</td>
                       <td>{inv.broker ?? '—'}</td>
                       <td style={{ textAlign: 'right' }} className="mono">{fmt(inv.quantity, 4)}</td>
-                      <td style={{ textAlign: 'right' }} className="mono">{fmtCurrency(inv.current_price)}</td>
+                      <td style={{ textAlign: 'right' }} className="mono">{fmtCurrency(inv.current_price, inv.price_currency)}</td>
                       <td style={{ textAlign: 'right' }} className="mono">{fmtCurrency(inv.current_value)}</td>
                       <td style={{ textAlign: 'right' }} className={`mono ${isGain(inv.total_return) ? 'gain' : 'loss'}`}>
                         {fmtCurrency(inv.total_return)}

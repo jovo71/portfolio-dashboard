@@ -50,6 +50,7 @@ export interface Investment {
   created_at: string
   updated_at?: string
   current_price?: number
+  price_currency?: string
   current_value?: number
   total_return?: number
   total_return_pct?: number
@@ -117,6 +118,7 @@ export interface InvestmentPerformance {
   broker?: string
   quantity: number
   current_price: number
+  price_currency?: string
   current_value: number
   purchase_value: number
   start_value: number

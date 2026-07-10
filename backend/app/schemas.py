@@ -71,6 +71,7 @@ class InvestmentResponse(InvestmentBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
     current_price: Optional[float] = None
+    price_currency: Optional[str] = None
     current_value: Optional[float] = None
     total_return: Optional[float] = None
     total_return_pct: Optional[float] = None
