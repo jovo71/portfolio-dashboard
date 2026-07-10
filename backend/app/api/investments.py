@@ -9,7 +9,7 @@ from datetime import date
 
 from app.database import get_db
 from app.auth import get_current_user
-from app.models import Investment
+from app.models import Investment, Portfolio
 from app.schemas import InvestmentCreate, InvestmentUpdate, InvestmentResponse
 from app.services.price_service import get_latest_price, get_previous_close, get_fx_rate
 
@@ -62,18 +62,20 @@ def enrich_investment(inv: Investment, db: Session) -> dict:
 @router.get("/", response_model=List[InvestmentResponse])
 def list_investments(
     portfolio_id: int = None,
+    category_id: int = None,
     db: Session = Depends(get_db),
     user: str = Depends(get_current_user),
 ):
-    """Haal alle beleggingen op, optioneel gefilterd op portfolio."""
+    """Haal beleggingen op, optioneel gefilterd op portfolio of categorie."""
     query = db.query(Investment)
     if portfolio_id:
         query = query.filter(Investment.portfolio_id == portfolio_id)
+    if category_id:
+        query = query.join(Portfolio).filter(Portfolio.category_id == category_id)
     return [enrich_investment(inv, db) for inv in query.all()]
 
 
 def _default_portfolio_id(db: Session) -> int:
-    from app.models import Portfolio
     p = db.query(Portfolio).order_by(Portfolio.id).first()
     return p.id if p else None
 
@@ -183,13 +185,16 @@ def import_csv(
 @router.get("/export/csv")
 def export_csv(
     portfolio_id: int = None,
+    category_id: int = None,
     db: Session = Depends(get_db),
     user: str = Depends(get_current_user),
 ):
-    """Exporteer beleggingen als CSV (optioneel gefilterd op portfolio)."""
+    """Exporteer beleggingen als CSV (optioneel gefilterd op portfolio of categorie)."""
     query = db.query(Investment)
     if portfolio_id:
         query = query.filter(Investment.portfolio_id == portfolio_id)
+    if category_id:
+        query = query.join(Portfolio).filter(Portfolio.category_id == category_id)
     investments = query.all()
     
     output = io.StringIO()

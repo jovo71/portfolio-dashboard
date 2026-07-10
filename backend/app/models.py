@@ -15,13 +15,26 @@ class CostType(str, enum.Enum):
     OVERIG = "overige kosten"
 
 
-class Portfolio(Base):
-    __tablename__ = "portfolios"
+class Category(Base):
+    """Niveau boven Portfolio, bijv. 'Pensioen' of 'Beleggingen'."""
+    __tablename__ = "categories"
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    portfolios = relationship("Portfolio", back_populates="category")
+
+
+class Portfolio(Base):
+    __tablename__ = "portfolios"
+
+    id = Column(Integer, primary_key=True, index=True)
+    category_id = Column(Integer, ForeignKey("categories.id"), index=True)
+    name = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    category = relationship("Category", back_populates="portfolios")
     investments = relationship("Investment", back_populates="portfolio")
 
 

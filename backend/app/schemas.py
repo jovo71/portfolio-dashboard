@@ -16,17 +16,41 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+# Categorie (niveau boven Portfolio)
+class CategoryBase(BaseModel):
+    name: str
+
+
+class CategoryCreate(CategoryBase):
+    pass
+
+
+class CategoryResponse(CategoryBase):
+    id: int
+    created_at: datetime
+    num_portfolios: int = 0
+
+    class Config:
+        from_attributes = True
+
+
 # Portfolio
 class PortfolioBase(BaseModel):
     name: str
 
 
 class PortfolioCreate(PortfolioBase):
-    pass
+    category_id: Optional[int] = None
+
+
+class PortfolioUpdate(BaseModel):
+    name: Optional[str] = None
+    category_id: Optional[int] = None
 
 
 class PortfolioResponse(PortfolioBase):
     id: int
+    category_id: Optional[int] = None
     created_at: datetime
     num_investments: int = 0
 

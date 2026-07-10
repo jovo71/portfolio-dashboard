@@ -4,8 +4,18 @@ from typing import Optional, List, Dict
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from app.models import Investment, PriceHistory, Dividend, CostEntry
+from app.models import Investment, PriceHistory, Dividend, CostEntry, Portfolio
 from app.services.price_service import get_fx_rate
+
+
+def _scope_investments(db: Session, portfolio_id: Optional[int], category_id: Optional[int]):
+    """Beleggingen gefilterd op portfolio en/of categorie."""
+    query = db.query(Investment)
+    if portfolio_id:
+        query = query.filter(Investment.portfolio_id == portfolio_id)
+    if category_id:
+        query = query.join(Portfolio).filter(Portfolio.category_id == category_id)
+    return query.all()
 
 
 def get_period_dates(period: str, start_date: Optional[date] = None, end_date: Optional[date] = None):
@@ -51,13 +61,11 @@ def calculate_portfolio_performance(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     portfolio_id: Optional[int] = None,
+    category_id: Optional[int] = None,
 ) -> dict:
     """Bereken portfolio performance voor een periode."""
     period_start, period_end = get_period_dates(period, start_date, end_date)
-    inv_query = db.query(Investment)
-    if portfolio_id:
-        inv_query = inv_query.filter(Investment.portfolio_id == portfolio_id)
-    investments = inv_query.all()
+    investments = _scope_investments(db, portfolio_id, category_id)
 
     total_current_value = 0.0
     total_purchase_value = 0.0
@@ -179,12 +187,14 @@ def calculate_portfolio_performance(
     }
 
 
-def get_portfolio_history(db: Session, days: int = 365, portfolio_id: Optional[int] = None) -> List[Dict]:
+def get_portfolio_history(
+    db: Session,
+    days: int = 365,
+    portfolio_id: Optional[int] = None,
+    category_id: Optional[int] = None,
+) -> List[Dict]:
     """Geef historische portefeuillewaarde per dag."""
-    inv_query = db.query(Investment)
-    if portfolio_id:
-        inv_query = inv_query.filter(Investment.portfolio_id == portfolio_id)
-    investments = inv_query.all()
+    investments = _scope_investments(db, portfolio_id, category_id)
     if not investments:
         return []
 

@@ -6,7 +6,7 @@ from typing import List
 
 from app.database import get_db
 from app.auth import get_current_user
-from app.models import CostEntry, Investment
+from app.models import CostEntry, Investment, Portfolio
 from app.schemas import CostEntryCreate, CostEntryResponse
 
 router = APIRouter()
@@ -16,6 +16,7 @@ router = APIRouter()
 def list_costs(
     investment_id: int = None,
     portfolio_id: int = None,
+    category_id: int = None,
     db: Session = Depends(get_db),
     user: str = Depends(get_current_user),
 ):
@@ -24,6 +25,8 @@ def list_costs(
         query = query.filter(CostEntry.investment_id == investment_id)
     if portfolio_id:
         query = query.join(Investment).filter(Investment.portfolio_id == portfolio_id)
+    elif category_id:
+        query = query.join(Investment).join(Portfolio).filter(Portfolio.category_id == category_id)
     return query.order_by(CostEntry.date.desc()).all()
 
 
@@ -56,6 +59,7 @@ def delete_cost(
 @router.get("/summary")
 def costs_summary(
     portfolio_id: int = None,
+    category_id: int = None,
     db: Session = Depends(get_db),
     user: str = Depends(get_current_user),
 ):
@@ -64,7 +68,11 @@ def costs_summary(
     current_year = date.today().year
 
     def scoped(q):
-        return q.join(Investment).filter(Investment.portfolio_id == portfolio_id) if portfolio_id else q
+        if portfolio_id:
+            return q.join(Investment).filter(Investment.portfolio_id == portfolio_id)
+        if category_id:
+            return q.join(Investment).join(Portfolio).filter(Portfolio.category_id == category_id)
+        return q
 
     costs_this_year = (
         scoped(db.query(func.sum(CostEntry.amount)))
@@ -74,29 +82,31 @@ def costs_summary(
 
     costs_total = scoped(db.query(func.sum(CostEntry.amount))).scalar() or 0.0
 
-    by_investment_q = db.query(
+    def scope_joined(q):
+        """Voor queries die Investment al gejoined hebben."""
+        if portfolio_id:
+            return q.filter(Investment.portfolio_id == portfolio_id)
+        if category_id:
+            return q.join(Portfolio).filter(Portfolio.category_id == category_id)
+        return q
+
+    by_investment_q = scope_joined(db.query(
         CostEntry.investment_id,
         Investment.name,
         func.sum(CostEntry.amount).label("total"),
-    ).join(Investment)
-    if portfolio_id:
-        by_investment_q = by_investment_q.filter(Investment.portfolio_id == portfolio_id)
+    ).join(Investment))
     by_investment = by_investment_q.group_by(CostEntry.investment_id, Investment.name).all()
 
-    by_broker_q = db.query(
+    by_broker_q = scope_joined(db.query(
         Investment.broker,
         func.sum(CostEntry.amount).label("total"),
-    ).join(CostEntry)
-    if portfolio_id:
-        by_broker_q = by_broker_q.filter(Investment.portfolio_id == portfolio_id)
+    ).join(CostEntry))
     by_broker = by_broker_q.group_by(Investment.broker).all()
 
-    by_type_q = db.query(
+    by_type_q = scoped(db.query(
         CostEntry.cost_type,
         func.sum(CostEntry.amount).label("total"),
-    )
-    if portfolio_id:
-        by_type_q = by_type_q.join(Investment).filter(Investment.portfolio_id == portfolio_id)
+    ))
     by_type = by_type_q.group_by(CostEntry.cost_type).all()
 
     return {

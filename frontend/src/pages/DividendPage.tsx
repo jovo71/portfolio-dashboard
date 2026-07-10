@@ -18,16 +18,16 @@ export default function DividendPage() {
   const [form, setForm] = useState({
     investment_id: '', payment_date: '', amount_per_share: '', total_amount: '', currency: 'EUR',
   })
-  const { selectedId } = usePortfolio()
+  const { selectedCategoryId } = usePortfolio()
 
   async function load() {
-    if (selectedId == null) return
+    if (selectedCategoryId == null) return
     setLoading(true)
     try {
       const [divResp, invResp, sumResp] = await Promise.all([
-        dividendsApi.list({ portfolioId: selectedId }),
-        investmentsApi.list(selectedId),
-        dividendsApi.summary(selectedId),
+        dividendsApi.list(selectedCategoryId),
+        investmentsApi.list(selectedCategoryId),
+        dividendsApi.summary(selectedCategoryId),
       ])
       setDividends(divResp.data)
       setInvestments(invResp.data)
@@ -39,7 +39,7 @@ export default function DividendPage() {
     }
   }
 
-  useEffect(() => { load() }, [selectedId])
+  useEffect(() => { load() }, [selectedCategoryId])
 
   async function save() {
     try {

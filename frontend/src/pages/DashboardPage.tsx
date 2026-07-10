@@ -47,15 +47,16 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [lastUpdate, setLastUpdate] = useState<string | null>(null)
-  const { selectedId } = usePortfolio()
+  const { selectedCategoryId, categories, portfolios } = usePortfolio()
+  const categoryName = categories.find(c => c.id === selectedCategoryId)?.name
 
   async function loadData() {
-    if (selectedId == null) return
+    if (selectedCategoryId == null) return
     setLoading(true)
     try {
       const [perfResp, histResp] = await Promise.all([
-        performanceApi.get(period, startDate || undefined, endDate || undefined, selectedId),
-        performanceApi.history(365, selectedId),
+        performanceApi.get(period, startDate || undefined, endDate || undefined, selectedCategoryId),
+        performanceApi.history(365, selectedCategoryId),
       ])
       setData(perfResp.data)
       setHistory(histResp.data)
@@ -80,7 +81,7 @@ export default function DashboardPage() {
     }
   }
 
-  useEffect(() => { loadData() }, [period, startDate, endDate, selectedId])
+  useEffect(() => { loadData() }, [period, startDate, endDate, selectedCategoryId])
 
   const s = data?.summary
   const isGain = (v?: number) => (v ?? 0) >= 0
@@ -118,8 +119,11 @@ export default function DashboardPage() {
     <div className={styles.page}>
       <div className={styles.topBar}>
         <div>
-          <h1>Dashboard</h1>
-          {lastUpdate && <p className={styles.lastUpdate}>Laatste update: {lastUpdate}</p>}
+          <h1>{categoryName ? `Dashboard — ${categoryName}` : 'Dashboard'}</h1>
+          <p className={styles.lastUpdate}>
+            {portfolios.length > 0 && `Totaal van ${portfolios.length} portfolio${portfolios.length === 1 ? '' : "'s"}`}
+            {lastUpdate && ` · Laatste update: ${lastUpdate}`}
+          </p>
         </div>
         <div className={styles.controls}>
           <select

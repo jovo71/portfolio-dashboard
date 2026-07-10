@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { usePortfolio } from '../PortfolioContext'
-import { portfoliosApi } from '../api'
+import { categoriesApi } from '../api'
 import styles from './Layout.module.css'
 
 interface Props {
@@ -23,47 +23,47 @@ const NAV = [
 
 export default function Layout({ theme, toggleTheme }: Props) {
   const navigate = useNavigate()
-  const { portfolios, selectedId, setSelectedId, reload } = usePortfolio()
+  const { categories, selectedCategoryId, setSelectedCategoryId, reload } = usePortfolio()
 
   function logout() {
     localStorage.removeItem('token')
     navigate('/login')
   }
 
-  async function addPortfolio() {
-    const name = window.prompt('Naam van het nieuwe portfolio:')
+  async function addCategory() {
+    const name = window.prompt('Naam van de nieuwe categorie:')
     if (!name?.trim()) return
     try {
-      const r = await portfoliosApi.create(name.trim())
+      const r = await categoriesApi.create(name.trim())
       await reload()
-      setSelectedId(r.data.id)
-      toast.success('Portfolio aangemaakt')
+      setSelectedCategoryId(r.data.id)
+      toast.success('Categorie aangemaakt')
     } catch {
       toast.error('Aanmaken mislukt')
     }
   }
 
-  async function renamePortfolio() {
-    if (selectedId == null) return
-    const current = portfolios.find(p => p.id === selectedId)
+  async function renameCategory() {
+    if (selectedCategoryId == null) return
+    const current = categories.find(c => c.id === selectedCategoryId)
     const name = window.prompt('Nieuwe naam:', current?.name)
     if (!name?.trim()) return
     try {
-      await portfoliosApi.rename(selectedId, name.trim())
+      await categoriesApi.rename(selectedCategoryId, name.trim())
       await reload()
     } catch {
       toast.error('Hernoemen mislukt')
     }
   }
 
-  async function deletePortfolio() {
-    if (selectedId == null) return
-    const current = portfolios.find(p => p.id === selectedId)
-    if (!window.confirm(`Portfolio "${current?.name}" verwijderen?`)) return
+  async function deleteCategory() {
+    if (selectedCategoryId == null) return
+    const current = categories.find(c => c.id === selectedCategoryId)
+    if (!window.confirm(`Categorie "${current?.name}" verwijderen?`)) return
     try {
-      await portfoliosApi.delete(selectedId)
+      await categoriesApi.delete(selectedCategoryId)
       await reload()
-      toast.success('Portfolio verwijderd')
+      toast.success('Categorie verwijderd')
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || 'Verwijderen mislukt')
     }
@@ -78,25 +78,28 @@ export default function Layout({ theme, toggleTheme }: Props) {
         </div>
 
         <div style={{ padding: '0 12px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Categorie
+          </label>
           <select
             className="form-control"
             style={{ fontSize: 13 }}
-            value={selectedId ?? ''}
-            onChange={e => setSelectedId(Number(e.target.value))}
+            value={selectedCategoryId ?? ''}
+            onChange={e => setSelectedCategoryId(Number(e.target.value))}
           >
-            {portfolios.length === 0 && <option value="">Laden…</option>}
-            {portfolios.map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
+            {categories.length === 0 && <option value="">Laden…</option>}
+            {categories.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
           <div style={{ display: 'flex', gap: 4 }}>
-            <button className="btn btn-secondary btn-sm btn-icon" onClick={addPortfolio} title="Nieuw portfolio">
+            <button className="btn btn-secondary btn-sm btn-icon" onClick={addCategory} title="Nieuwe categorie">
               <Plus size={13} />
             </button>
-            <button className="btn btn-secondary btn-sm btn-icon" onClick={renamePortfolio} title="Hernoemen" disabled={selectedId == null}>
+            <button className="btn btn-secondary btn-sm btn-icon" onClick={renameCategory} title="Hernoemen" disabled={selectedCategoryId == null}>
               <Pencil size={13} />
             </button>
-            <button className="btn btn-secondary btn-sm btn-icon" onClick={deletePortfolio} title="Verwijderen" disabled={selectedId == null}>
+            <button className="btn btn-secondary btn-sm btn-icon" onClick={deleteCategory} title="Verwijderen" disabled={selectedCategoryId == null}>
               <Trash2 size={13} />
             </button>
           </div>

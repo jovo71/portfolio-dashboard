@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Plus, Edit2, Trash2, Upload, Download } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import toast from 'react-hot-toast'
-import { investmentsApi, pricesApi, Investment, PriceHistory } from '../api'
+import { investmentsApi, pricesApi, portfoliosApi, Investment, PriceHistory } from '../api'
 import { usePortfolio } from '../PortfolioContext'
 import { format } from 'date-fns'
 import { nl } from 'date-fns/locale'
@@ -12,13 +12,13 @@ const BROKERS = ['DeGiro', 'Rabobank', 'Andere']
 const CURRENCIES = ['EUR', 'USD', 'GBP', 'CHF']
 
 type FormData = {
-  name: string; ticker: string; broker: string
+  name: string; portfolio_id: string; ticker: string; broker: string
   quantity: string; average_purchase_price: string; currency: string
   purchase_date: string; management_fee_percentage: string
 }
 
 const EMPTY_FORM: FormData = {
-  name: '', ticker: '', broker: 'DeGiro',
+  name: '', portfolio_id: '', ticker: '', broker: 'DeGiro',
   quantity: '', average_purchase_price: '', currency: 'EUR',
   purchase_date: '', management_fee_percentage: '0',
 }
@@ -41,13 +41,15 @@ export default function PortfolioPage() {
   const [chartLoading, setChartLoading] = useState(false)
   const [chartPeriod, setChartPeriod] = useState<'1m' | '3m' | '1y'>('1y')
   const [backfilling, setBackfilling] = useState(false)
-  const { selectedId } = usePortfolio()
+  const { selectedCategoryId, categories, portfolios, reload: reloadContext } = usePortfolio()
+  const categoryName = categories.find(c => c.id === selectedCategoryId)?.name
+  const pfMap = Object.fromEntries(portfolios.map(p => [p.id, p.name]))
 
   async function load() {
-    if (selectedId == null) return
+    if (selectedCategoryId == null) return
     setLoading(true)
     try {
-      const resp = await investmentsApi.list(selectedId)
+      const resp = await investmentsApi.list(selectedCategoryId)
       setInvestments(resp.data)
     } catch {
       toast.error('Fout bij laden van beleggingen')
@@ -56,11 +58,15 @@ export default function PortfolioPage() {
     }
   }
 
-  useEffect(() => { load() }, [selectedId])
+  useEffect(() => { load() }, [selectedCategoryId, portfolios.length])
 
   function openNew() {
+    if (portfolios.length === 0) {
+      toast.error('Maak eerst een portfolio aan in deze categorie')
+      return
+    }
     setEditing(null)
-    setForm(EMPTY_FORM)
+    setForm({ ...EMPTY_FORM, portfolio_id: String(portfolios[0].id) })
     setShowModal(true)
   }
 
@@ -68,6 +74,7 @@ export default function PortfolioPage() {
     setEditing(inv)
     setForm({
       name: inv.name,
+      portfolio_id: String(inv.portfolio_id ?? portfolios[0]?.id ?? ''),
       ticker: inv.ticker ?? '',
       broker: inv.broker ?? 'DeGiro',
       quantity: String(inv.quantity),
@@ -80,7 +87,7 @@ export default function PortfolioPage() {
   }
 
   async function save() {
-    if (!form.name || !form.quantity || !form.average_purchase_price) {
+    if (!form.name || !form.portfolio_id || !form.quantity || !form.average_purchase_price) {
       toast.error('Vul alle verplichte velden in')
       return
     }
@@ -88,7 +95,7 @@ export default function PortfolioPage() {
     try {
       const payload = {
         name: form.name,
-        portfolio_id: selectedId ?? undefined,
+        portfolio_id: form.portfolio_id ? parseInt(form.portfolio_id) : undefined,
         ticker: form.ticker || undefined,
         broker: form.broker || undefined,
         quantity: parseFloat(form.quantity),
@@ -106,6 +113,7 @@ export default function PortfolioPage() {
       }
       setShowModal(false)
       load()
+      reloadContext()
     } catch {
       toast.error('Opslaan mislukt')
     } finally {
@@ -174,6 +182,7 @@ export default function PortfolioPage() {
       await investmentsApi.delete(inv.id)
       toast.success('Belegging verwijderd')
       load()
+      reloadContext()
     } catch {
       toast.error('Verwijderen mislukt')
     }
@@ -182,9 +191,14 @@ export default function PortfolioPage() {
   async function importCsv(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    const target = portfolios[0]
+    if (!target) {
+      toast.error('Maak eerst een portfolio aan in deze categorie')
+      return
+    }
     try {
-      const resp = await investmentsApi.importCsv(file, selectedId ?? undefined)
-      toast.success(`${resp.data.imported} beleggingen geïmporteerd`)
+      const resp = await investmentsApi.importCsv(file, target.id)
+      toast.success(`${resp.data.imported} beleggingen geïmporteerd in "${target.name}"`)
       if (resp.data.errors?.length) {
         toast.error(`${resp.data.errors.length} fouten bij import`)
       }
@@ -196,7 +210,7 @@ export default function PortfolioPage() {
 
   async function exportCsv() {
     try {
-      const resp = await investmentsApi.exportCsv(selectedId ?? undefined)
+      const resp = await investmentsApi.exportCsv(selectedCategoryId ?? undefined)
       const url = URL.createObjectURL(new Blob([resp.data]))
       const a = document.createElement('a')
       a.href = url
@@ -210,10 +224,49 @@ export default function PortfolioPage() {
   const setField = (k: keyof FormData) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }))
 
+  async function addPortfolio() {
+    if (selectedCategoryId == null) return
+    const name = window.prompt('Naam van het nieuwe portfolio:')
+    if (!name?.trim()) return
+    try {
+      await portfoliosApi.create(name.trim(), selectedCategoryId)
+      await reloadContext()
+      toast.success('Portfolio aangemaakt')
+    } catch { toast.error('Aanmaken mislukt') }
+  }
+
+  async function renamePortfolio(id: number, current: string) {
+    const name = window.prompt('Nieuwe naam:', current)
+    if (!name?.trim()) return
+    try {
+      await portfoliosApi.update(id, { name: name.trim() })
+      await reloadContext()
+    } catch { toast.error('Hernoemen mislukt') }
+  }
+
+  async function movePortfolio(id: number, categoryId: number) {
+    try {
+      await portfoliosApi.update(id, { category_id: categoryId })
+      await reloadContext()
+      toast.success('Portfolio verplaatst')
+    } catch { toast.error('Verplaatsen mislukt') }
+  }
+
+  async function deletePortfolio(id: number, name: string) {
+    if (!window.confirm(`Portfolio "${name}" verwijderen?`)) return
+    try {
+      await portfoliosApi.delete(id)
+      await reloadContext()
+      toast.success('Portfolio verwijderd')
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Verwijderen mislukt')
+    }
+  }
+
   return (
     <div className={styles.page}>
       <div className={styles.header}>
-        <h1>Portfolio</h1>
+        <h1>{categoryName ? `Portfolio — ${categoryName}` : 'Portfolio'}</h1>
         <div style={{ display: 'flex', gap: 8 }}>
           <input ref={fileRef} type="file" accept=".csv" onChange={importCsv} style={{ display: 'none' }} />
           <button className="btn btn-secondary btn-sm" onClick={() => fileRef.current?.click()}>
@@ -228,6 +281,50 @@ export default function PortfolioPage() {
         </div>
       </div>
 
+      {/* Portfolio's in deze categorie */}
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">Portfolio's in deze categorie</span>
+          <button className="btn btn-secondary btn-sm" onClick={addPortfolio}>
+            <Plus size={13} /> Portfolio toevoegen
+          </button>
+        </div>
+        {portfolios.length === 0 ? (
+          <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 8 }}>
+            Nog geen portfolio's in "{categoryName}". Voeg er één toe om beleggingen te kunnen registreren.
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+            {portfolios.map(p => (
+              <div key={p.id} style={{
+                display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+                padding: '8px 12px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-sm)',
+              }}>
+                <span style={{ fontWeight: 500, flex: 1, minWidth: 140 }}>{p.name}</span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                  {p.num_investments} belegging{p.num_investments === 1 ? '' : 'en'}
+                </span>
+                <select
+                  className="form-control"
+                  style={{ width: 'auto', fontSize: 12, padding: '4px 8px' }}
+                  value={p.category_id ?? ''}
+                  onChange={e => movePortfolio(p.id, Number(e.target.value))}
+                  title="Verplaats naar een andere categorie"
+                >
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <button className="btn btn-secondary btn-sm btn-icon" onClick={() => renamePortfolio(p.id, p.name)} title="Hernoemen">
+                  <Edit2 size={12} />
+                </button>
+                <button className="btn btn-danger btn-sm btn-icon" onClick={() => deletePortfolio(p.id, p.name)} title="Verwijderen">
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {loading ? (
         <div className="loading"><div className="spinner" /> Laden…</div>
       ) : (
@@ -237,6 +334,7 @@ export default function PortfolioPage() {
               <thead>
                 <tr>
                   <th>Naam</th>
+                  <th>Portfolio</th>
                   <th>Ticker / ISIN</th>
                   <th>Broker</th>
                   <th style={{ textAlign: 'right' }}>Stuks</th>
@@ -250,8 +348,8 @@ export default function PortfolioPage() {
               </thead>
               <tbody>
                 {investments.length === 0 ? (
-                  <tr><td colSpan={10} style={{ textAlign: 'center', padding: 40, color: 'var(--text-secondary)' }}>
-                    Nog geen beleggingen. Klik op "Belegging toevoegen" om te beginnen.
+                  <tr><td colSpan={11} style={{ textAlign: 'center', padding: 40, color: 'var(--text-secondary)' }}>
+                    Nog geen beleggingen in deze categorie. Klik op "Belegging toevoegen" om te beginnen.
                   </td></tr>
                 ) : investments.map(inv => {
                   const isGain = (inv.total_return_pct ?? 0) >= 0
@@ -265,6 +363,9 @@ export default function PortfolioPage() {
                   return (
                     <tr key={inv.id} onClick={() => openChart(inv)} style={{ cursor: 'pointer' }} title={`${updatedLabel} · klik voor koershistorie`}>
                       <td style={{ fontWeight: 500 }}>{inv.name}</td>
+                      <td style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+                        {inv.portfolio_id ? (pfMap[inv.portfolio_id] ?? '—') : '—'}
+                      </td>
                       <td className="mono">{inv.ticker ?? '—'}</td>
                       <td>
                         <span className={`${styles.brokerBadge} ${inv.broker === 'DeGiro' ? styles.degiro : styles.rabobank}`}>
@@ -395,6 +496,15 @@ export default function PortfolioPage() {
                 <div className="form-group" style={{ gridColumn: 'span 2' }}>
                   <label className="form-label">Naam *</label>
                   <input className="form-control" value={form.name} onChange={setField('name')} placeholder="bijv. VWRL ETF" />
+                </div>
+                <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                  <label className="form-label">Portfolio *</label>
+                  <select className="form-control" value={form.portfolio_id} onChange={setField('portfolio_id')}>
+                    {portfolios.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    Portfolio's binnen categorie "{categoryName}"
+                  </span>
                 </div>
                 <div className="form-group">
                   <label className="form-label">Ticker / ISIN</label>

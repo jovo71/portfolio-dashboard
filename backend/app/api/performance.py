@@ -17,19 +17,21 @@ def get_performance(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     portfolio_id: Optional[int] = None,
+    category_id: Optional[int] = None,
     db: Session = Depends(get_db),
     user: str = Depends(get_current_user),
 ):
     """Bereken portfolio performance voor een periode."""
-    return calculate_portfolio_performance(db, period, start_date, end_date, portfolio_id)
+    return calculate_portfolio_performance(db, period, start_date, end_date, portfolio_id, category_id)
 
 
 @router.get("/history")
 def get_history(
     days: int = 365,
     portfolio_id: Optional[int] = None,
+    category_id: Optional[int] = None,
     db: Session = Depends(get_db),
     user: str = Depends(get_current_user),
 ):
     """Historische portefeuillewaarde."""
-    return get_portfolio_history(db, days, portfolio_id)
+    return get_portfolio_history(db, days, portfolio_id, category_id)

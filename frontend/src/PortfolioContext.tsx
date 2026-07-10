@@ -1,43 +1,50 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { portfoliosApi, Portfolio } from './api'
+import { categoriesApi, portfoliosApi, Category, Portfolio } from './api'
 
-interface PortfolioCtx {
+interface Ctx {
+  categories: Category[]
+  /** Portfolio's binnen de geselecteerde categorie. */
   portfolios: Portfolio[]
-  selectedId: number | null
-  setSelectedId: (id: number) => void
+  /** Alle portfolio's (nodig om ze tussen categorieën te verplaatsen). */
+  allPortfolios: Portfolio[]
+  selectedCategoryId: number | null
+  setSelectedCategoryId: (id: number) => void
   reload: () => Promise<void>
   loading: boolean
 }
 
-const Ctx = createContext<PortfolioCtx>({
-  portfolios: [], selectedId: null, setSelectedId: () => {}, reload: async () => {}, loading: true,
+const Ctx = createContext<Ctx>({
+  categories: [], portfolios: [], allPortfolios: [],
+  selectedCategoryId: null, setSelectedCategoryId: () => {},
+  reload: async () => {}, loading: true,
 })
 
 export const usePortfolio = () => useContext(Ctx)
 
 export function PortfolioProvider({ children }: { children: ReactNode }) {
-  const [portfolios, setPortfolios] = useState<Portfolio[]>([])
-  const [selectedId, setSelectedIdState] = useState<number | null>(() => {
-    const v = localStorage.getItem('portfolioId')
+  const [categories, setCategories] = useState<Category[]>([])
+  const [allPortfolios, setAllPortfolios] = useState<Portfolio[]>([])
+  const [selectedCategoryId, setSelectedIdState] = useState<number | null>(() => {
+    const v = localStorage.getItem('categoryId')
     return v ? Number(v) : null
   })
   const [loading, setLoading] = useState(true)
 
-  function setSelectedId(id: number) {
+  function setSelectedCategoryId(id: number) {
     setSelectedIdState(id)
-    localStorage.setItem('portfolioId', String(id))
+    localStorage.setItem('categoryId', String(id))
   }
 
   async function reload() {
     try {
-      const resp = await portfoliosApi.list()
-      setPortfolios(resp.data)
-      // Zorg dat de selectie geldig is
+      const [catResp, pfResp] = await Promise.all([categoriesApi.list(), portfoliosApi.list()])
+      setCategories(catResp.data)
+      setAllPortfolios(pfResp.data)
       setSelectedIdState(prev => {
-        if (resp.data.length === 0) return null
-        if (prev != null && resp.data.some(p => p.id === prev)) return prev
-        const next = resp.data[0].id
-        localStorage.setItem('portfolioId', String(next))
+        if (catResp.data.length === 0) return null
+        if (prev != null && catResp.data.some(c => c.id === prev)) return prev
+        const next = catResp.data[0].id
+        localStorage.setItem('categoryId', String(next))
         return next
       })
     } finally {
@@ -47,8 +54,13 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { reload() }, [])
 
+  const portfolios = allPortfolios.filter(p => p.category_id === selectedCategoryId)
+
   return (
-    <Ctx.Provider value={{ portfolios, selectedId, setSelectedId, reload, loading }}>
+    <Ctx.Provider value={{
+      categories, portfolios, allPortfolios,
+      selectedCategoryId, setSelectedCategoryId, reload, loading,
+    }}>
       {children}
     </Ctx.Provider>
   )

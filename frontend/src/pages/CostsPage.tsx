@@ -20,14 +20,14 @@ export default function CostsPage() {
   const [form, setForm] = useState({
     investment_id: '', cost_type: 'beheerskosten', amount: '', date: '', description: '',
   })
-  const { selectedId } = usePortfolio()
+  const { selectedCategoryId } = usePortfolio()
 
   async function load() {
-    if (selectedId == null) return
+    if (selectedCategoryId == null) return
     setLoading(true)
     try {
       const [costResp, invResp, sumResp] = await Promise.all([
-        costsApi.list({ portfolioId: selectedId }), investmentsApi.list(selectedId), costsApi.summary(selectedId),
+        costsApi.list(selectedCategoryId), investmentsApi.list(selectedCategoryId), costsApi.summary(selectedCategoryId),
       ])
       setCosts(costResp.data)
       setInvestments(invResp.data)
@@ -36,7 +36,7 @@ export default function CostsPage() {
     finally { setLoading(false) }
   }
 
-  useEffect(() => { load() }, [selectedId])
+  useEffect(() => { load() }, [selectedCategoryId])
 
   async function save() {
     try {

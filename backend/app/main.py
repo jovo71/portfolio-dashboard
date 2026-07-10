@@ -11,8 +11,8 @@ import subprocess
 from sqlalchemy import inspect, text
 
 from app.database import engine, Base, SessionLocal
-from app.models import SystemLog, Portfolio, Investment
-from app.api import auth, investments, prices, dividends, costs, performance, system, portfolios
+from app.models import SystemLog, Portfolio, Investment, Category
+from app.api import auth, investments, prices, dividends, costs, performance, system, portfolios, categories
 from app.services.scheduler import start_scheduler, stop_scheduler
 
 logging.basicConfig(
@@ -24,37 +24,75 @@ logger = logging.getLogger(__name__)
 APP_DIR = os.getenv("APP_DIR", "/opt/portfolio-dashboard")
 
 
-def _migrate_portfolios():
-    """Voeg portfolio-ondersteuning toe aan een bestaande database.
-
-    - voegt de kolom investments.portfolio_id toe als die ontbreekt;
-    - zorgt voor een standaard-portfolio 'Hoofdportefeuille';
-    - wijst losse beleggingen (zonder portfolio) aan dat portfolio toe.
-    """
-    insp = inspect(engine)
-    cols = [c["name"] for c in insp.get_columns("investments")]
-    if "portfolio_id" not in cols:
+def _add_column_if_missing(table: str, column: str, ddl_type: str):
+    """Voeg een kolom toe aan een bestaande tabel als die nog ontbreekt."""
+    cols = [c["name"] for c in inspect(engine).get_columns(table)]
+    if column not in cols:
         with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE investments ADD COLUMN portfolio_id INTEGER"))
-        logger.info("Migratie: kolom investments.portfolio_id toegevoegd")
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}"))
+        logger.info(f"Migratie: kolom {table}.{column} toegevoegd")
 
+
+def _migrate_schema():
+    """Breng een bestaande database op het huidige schema.
+
+    Belangrijk: alle ALTER TABLE's gebeuren vóór de eerste ORM-query, anders
+    selecteert SQLAlchemy kolommen die nog niet bestaan.
+    """
+    _add_column_if_missing("investments", "portfolio_id", "INTEGER")
+    _add_column_if_missing("portfolios", "category_id", "INTEGER")
+
+
+def _migrate_data():
+    """Vul de nieuwe structuur met zinnige standaardwaarden.
+
+    - categorieën 'Beleggingen' en 'Pensioen' als er nog geen zijn;
+    - een standaard-portfolio 'Hoofdportefeuille' als er nog geen is;
+    - portfolio's zonder categorie: naam met 'giro' -> Pensioen, rest -> Beleggingen;
+    - beleggingen zonder portfolio -> het eerste portfolio.
+    Alles is achteraf aan te passen in de app.
+    """
     db = SessionLocal()
     try:
-        default = db.query(Portfolio).order_by(Portfolio.id).first()
-        if not default:
-            default = Portfolio(name="Hoofdportefeuille")
-            db.add(default)
+        if db.query(Category).count() == 0:
+            db.add_all([Category(name="Beleggingen"), Category(name="Pensioen")])
             db.commit()
-            db.refresh(default)
+            logger.info("Migratie: categorieën 'Beleggingen' en 'Pensioen' aangemaakt")
+
+        beleggingen = db.query(Category).filter(Category.name == "Beleggingen").first()
+        pensioen = db.query(Category).filter(Category.name == "Pensioen").first()
+        fallback_cat = beleggingen or db.query(Category).order_by(Category.id).first()
+
+        # Standaard-portfolio als er nog geen enkel portfolio bestaat
+        default_pf = db.query(Portfolio).order_by(Portfolio.id).first()
+        if not default_pf:
+            default_pf = Portfolio(
+                name="Hoofdportefeuille",
+                category_id=fallback_cat.id if fallback_cat else None,
+            )
+            db.add(default_pf)
+            db.commit()
+            db.refresh(default_pf)
             logger.info("Migratie: standaard-portfolio 'Hoofdportefeuille' aangemaakt")
-        orphans = (
+
+        # Portfolio's zonder categorie
+        pf_orphans = db.query(Portfolio).filter(Portfolio.category_id.is_(None)).all()
+        for p in pf_orphans:
+            is_giro = "giro" in (p.name or "").lower()
+            p.category_id = pensioen.id if (is_giro and pensioen) else (fallback_cat.id if fallback_cat else None)
+        if pf_orphans:
+            db.commit()
+            logger.info(f"Migratie: {len(pf_orphans)} portfolio's aan een categorie toegewezen")
+
+        # Beleggingen zonder portfolio
+        inv_orphans = (
             db.query(Investment)
             .filter(Investment.portfolio_id.is_(None))
-            .update({Investment.portfolio_id: default.id})
+            .update({Investment.portfolio_id: default_pf.id})
         )
-        if orphans:
+        if inv_orphans:
             db.commit()
-            logger.info(f"Migratie: {orphans} beleggingen toegewezen aan '{default.name}'")
+            logger.info(f"Migratie: {inv_orphans} beleggingen toegewezen aan '{default_pf.name}'")
     finally:
         db.close()
 
@@ -92,7 +130,8 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
     logger.info("Starting Portfolio Dashboard API")
     Base.metadata.create_all(bind=engine)
-    _migrate_portfolios()
+    _migrate_schema()
+    _migrate_data()
     _log_deploy_completed()
     start_scheduler()
     yield
@@ -117,6 +156,7 @@ app.add_middleware(
 
 # Routers
 app.include_router(auth.router, prefix="/api/auth", tags=["Authenticatie"])
+app.include_router(categories.router, prefix="/api/categories", tags=["Categorieën"])
 app.include_router(portfolios.router, prefix="/api/portfolios", tags=["Portfolio's"])
 app.include_router(investments.router, prefix="/api/investments", tags=["Beleggingen"])
 app.include_router(prices.router, prefix="/api/prices", tags=["Koersen"])

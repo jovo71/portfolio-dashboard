@@ -28,8 +28,16 @@ api.interceptors.response.use(
 )
 
 // Types
+export interface Category {
+  id: number
+  name: string
+  created_at: string
+  num_portfolios: number
+}
+
 export interface Portfolio {
   id: number
+  category_id?: number
   name: string
   created_at: string
   num_investments: number
@@ -147,16 +155,26 @@ export const authApi = {
     api.post<{ access_token: string }>('/auth/login', { username, password }),
 }
 
+export const categoriesApi = {
+  list: () => api.get<Category[]>('/categories/'),
+  create: (name: string) => api.post<Category>('/categories/', { name }),
+  rename: (id: number, name: string) => api.put<Category>(`/categories/${id}`, { name }),
+  delete: (id: number) => api.delete(`/categories/${id}`),
+}
+
 export const portfoliosApi = {
-  list: () => api.get<Portfolio[]>('/portfolios/'),
-  create: (name: string) => api.post<Portfolio>('/portfolios/', { name }),
-  rename: (id: number, name: string) => api.put<Portfolio>(`/portfolios/${id}`, { name }),
+  list: (categoryId?: number) =>
+    api.get<Portfolio[]>('/portfolios/', { params: categoryId ? { category_id: categoryId } : {} }),
+  create: (name: string, categoryId?: number) =>
+    api.post<Portfolio>('/portfolios/', { name, category_id: categoryId }),
+  update: (id: number, data: { name?: string; category_id?: number }) =>
+    api.put<Portfolio>(`/portfolios/${id}`, data),
   delete: (id: number) => api.delete(`/portfolios/${id}`),
 }
 
 export const investmentsApi = {
-  list: (portfolioId?: number) =>
-    api.get<Investment[]>('/investments/', { params: portfolioId ? { portfolio_id: portfolioId } : {} }),
+  list: (categoryId?: number) =>
+    api.get<Investment[]>('/investments/', { params: categoryId ? { category_id: categoryId } : {} }),
   get: (id: number) => api.get<Investment>(`/investments/${id}`),
   create: (data: Partial<Investment>) => api.post<Investment>('/investments/', data),
   update: (id: number, data: Partial<Investment>) => api.put<Investment>(`/investments/${id}`, data),
@@ -166,8 +184,8 @@ export const investmentsApi = {
     form.append('file', file)
     return api.post('/investments/import/csv', form, { params: portfolioId ? { portfolio_id: portfolioId } : {} })
   },
-  exportCsv: (portfolioId?: number) =>
-    api.get('/investments/export/csv', { responseType: 'blob', params: portfolioId ? { portfolio_id: portfolioId } : {} }),
+  exportCsv: (categoryId?: number) =>
+    api.get('/investments/export/csv', { responseType: 'blob', params: categoryId ? { category_id: categoryId } : {} }),
 }
 
 export const pricesApi = {
@@ -179,41 +197,31 @@ export const pricesApi = {
 }
 
 export const dividendsApi = {
-  list: (opts?: { investmentId?: number; portfolioId?: number }) =>
-    api.get<Dividend[]>('/dividends/', {
-      params: {
-        ...(opts?.investmentId ? { investment_id: opts.investmentId } : {}),
-        ...(opts?.portfolioId ? { portfolio_id: opts.portfolioId } : {}),
-      },
-    }),
+  list: (categoryId?: number) =>
+    api.get<Dividend[]>('/dividends/', { params: categoryId ? { category_id: categoryId } : {} }),
   create: (data: Partial<Dividend>) => api.post<Dividend>('/dividends/', data),
   delete: (id: number) => api.delete(`/dividends/${id}`),
-  summary: (portfolioId?: number) =>
-    api.get('/dividends/summary', { params: portfolioId ? { portfolio_id: portfolioId } : {} }),
+  summary: (categoryId?: number) =>
+    api.get('/dividends/summary', { params: categoryId ? { category_id: categoryId } : {} }),
 }
 
 export const costsApi = {
-  list: (opts?: { investmentId?: number; portfolioId?: number }) =>
-    api.get<CostEntry[]>('/costs/', {
-      params: {
-        ...(opts?.investmentId ? { investment_id: opts.investmentId } : {}),
-        ...(opts?.portfolioId ? { portfolio_id: opts.portfolioId } : {}),
-      },
-    }),
+  list: (categoryId?: number) =>
+    api.get<CostEntry[]>('/costs/', { params: categoryId ? { category_id: categoryId } : {} }),
   create: (data: Partial<CostEntry>) => api.post<CostEntry>('/costs/', data),
   delete: (id: number) => api.delete(`/costs/${id}`),
-  summary: (portfolioId?: number) =>
-    api.get('/costs/summary', { params: portfolioId ? { portfolio_id: portfolioId } : {} }),
+  summary: (categoryId?: number) =>
+    api.get('/costs/summary', { params: categoryId ? { category_id: categoryId } : {} }),
 }
 
 export const performanceApi = {
-  get: (period: string, startDate?: string, endDate?: string, portfolioId?: number) =>
+  get: (period: string, startDate?: string, endDate?: string, categoryId?: number) =>
     api.get<PerformanceData>('/performance/', {
-      params: { period, start_date: startDate, end_date: endDate, ...(portfolioId ? { portfolio_id: portfolioId } : {}) },
+      params: { period, start_date: startDate, end_date: endDate, ...(categoryId ? { category_id: categoryId } : {}) },
     }),
-  history: (days?: number, portfolioId?: number) =>
+  history: (days?: number, categoryId?: number) =>
     api.get<{ date: string; value: number }[]>('/performance/history', {
-      params: { days, ...(portfolioId ? { portfolio_id: portfolioId } : {}) },
+      params: { days, ...(categoryId ? { category_id: categoryId } : {}) },
     }),
 }
 
