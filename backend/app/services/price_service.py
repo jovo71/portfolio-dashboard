@@ -1,7 +1,12 @@
-"""Koersophaling service via Yahoo Finance en Northern Trust FGR."""
+"""Koersophaling service via Yahoo Finance en Northern Trust FGR.
+
+Yahoo wordt rechtstreeks via het publieke chart-endpoint bevraagd. De
+yfinance-library is bewust niet in gebruik: die spreekt endpoints aan die
+Yahoo heeft afgeschermd (401/429), waardoor koersophalen volledig faalde.
+Een browser-User-Agent is verplicht, anders volgt HTTP 429.
+"""
 import os
 import re
-import yfinance as yf
 import requests
 from datetime import datetime, time
 from sqlalchemy.orm import Session
@@ -67,10 +72,41 @@ def _is_nt_ticker(ticker: str) -> Optional[str]:
     return None
 
 
-# Yahoo Finance zoek-API: zet een ISIN om naar een beurssymbool (bijv.
-# IE00BF1QPL78 -> SPFE.DE). Resultaten worden voor de procesduur gecachet.
+# Yahoo Finance. Zonder browser-User-Agent antwoordt Yahoo met HTTP 429.
 YAHOO_SEARCH_URL = "https://query1.finance.yahoo.com/v1/finance/search"
+YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+YAHOO_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    )
+}
 _symbol_cache: dict = {}
+
+
+def _yahoo_chart(symbol: str, range_: str = "1d", interval: str = "1d") -> dict:
+    """Haal het chart-resultaat voor een symbool op. Gooit bij fouten."""
+    resp = requests.get(
+        YAHOO_CHART_URL.format(symbol=symbol),
+        params={"range": range_, "interval": interval},
+        headers=YAHOO_HEADERS,
+        timeout=20,
+    )
+    resp.raise_for_status()
+    chart = (resp.json() or {}).get("chart") or {}
+    if chart.get("error"):
+        raise ValueError(chart["error"].get("description") or "Yahoo-fout")
+    results = chart.get("result") or []
+    if not results:
+        raise ValueError("geen koersdata")
+    return results[0]
+
+
+def _chart_closes(result: dict):
+    """Geef (timestamps, closes) uit een chart-resultaat."""
+    timestamps = result.get("timestamp") or []
+    quote = ((result.get("indicators") or {}).get("quote") or [{}])[0]
+    return timestamps, (quote.get("close") or [])
 
 
 def resolve_yahoo_symbol(isin: str) -> Optional[str]:
@@ -83,7 +119,7 @@ def resolve_yahoo_symbol(isin: str) -> Optional[str]:
         resp = requests.get(
             YAHOO_SEARCH_URL,
             params={"q": key, "quotesCount": 5, "newsCount": 0},
-            headers={"User-Agent": "Mozilla/5.0"},
+            headers=YAHOO_HEADERS,
             timeout=15,
         )
         resp.raise_for_status()
@@ -128,15 +164,15 @@ def get_current_price(ticker: str) -> Optional[float]:
         return None
 
     try:
-        stock = yf.Ticker(symbol)
-        info = stock.fast_info
-        price = info.last_price
-        if price and price > 0:
+        result = _yahoo_chart(symbol, range_="5d", interval="1d")
+        price = (result.get("meta") or {}).get("regularMarketPrice")
+        if price and float(price) > 0:
             return float(price)
-        # Fallback: recent history
-        hist = stock.history(period="2d")
-        if not hist.empty:
-            return float(hist["Close"].iloc[-1])
+        # Fallback: laatste geldige slotkoers uit de reeks
+        _, closes = _chart_closes(result)
+        for close in reversed(closes):
+            if close:
+                return float(close)
         return None
     except Exception as e:
         logger.warning(f"Koers ophalen mislukt voor {ticker}: {e}")
@@ -190,7 +226,7 @@ def backfill_history(db: Session, investment, period: str = "1y") -> dict:
     """Haal historische dagkoersen op via Yahoo Finance en vul price_history aan.
 
     Bestaande dagen worden overgeslagen, zodat herhaald ophalen geen
-    duplicaten oplevert. `period` is een yfinance-periode (bijv. 1mo, 3mo, 1y, max).
+    duplicaten oplevert. `period` is een Yahoo-range (bijv. 1mo, 3mo, 1y, max).
     """
     if not investment.ticker:
         return {"added": 0, "reason": "geen ticker"}
@@ -203,12 +239,13 @@ def backfill_history(db: Session, investment, period: str = "1y") -> dict:
         return {"added": 0, "reason": "isin_niet_gevonden"}
 
     try:
-        hist = yf.Ticker(symbol).history(period=period)
+        result = _yahoo_chart(symbol, range_=period, interval="1d")
     except Exception as e:
         logger.warning(f"Historie ophalen mislukt voor {investment.ticker}: {e}")
         return {"added": 0, "reason": str(e)}
 
-    if hist is None or hist.empty:
+    timestamps, closes = _chart_closes(result)
+    if not timestamps:
         return {"added": 0, "reason": "geen data"}
 
     existing = {
@@ -219,20 +256,16 @@ def backfill_history(db: Session, investment, period: str = "1y") -> dict:
     }
 
     added = 0
-    for idx, row in hist.iterrows():
-        d = idx.to_pydatetime()
+    for ts, close in zip(timestamps, closes):
+        if not close or float(close) <= 0:
+            continue
+        d = datetime.utcfromtimestamp(ts)
         if d.date() in existing:
-            continue
-        try:
-            close = float(row["Close"])
-        except (TypeError, ValueError):
-            continue
-        if close <= 0:
             continue
         db.add(PriceHistory(
             investment_id=investment.id,
             date=d,
-            price=close,
+            price=float(close),
             currency=investment.currency,
         ))
         existing.add(d.date())
