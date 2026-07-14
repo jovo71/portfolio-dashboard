@@ -141,26 +141,48 @@ def get_fx_rate(currency: Optional[str]) -> float:
     return 1.0
 
 
+def _chart_currency(symbol: str) -> Optional[str]:
+    """Geef de valuta waarin `symbol` noteert (of None)."""
+    try:
+        meta = _yahoo_chart(symbol, range_="1d", interval="1d").get("meta") or {}
+        return (meta.get("currency") or "").upper() or None
+    except Exception:
+        return None
+
+
 def resolve_yahoo_symbol(isin: str) -> Optional[str]:
-    """Zoek het Yahoo-beurssymbool bij een ISIN."""
+    """Zoek het Yahoo-beurssymbool bij een ISIN.
+
+    Bij meerdere noteringen van hetzelfde fonds krijgt een EUR-notering
+    voorrang: Yahoo geeft vaak eerst de Londense USD-notering terug, terwijl
+    het om een euro-fonds gaat.
+    """
     key = isin.strip().upper()
     if key in _symbol_cache:
         return _symbol_cache[key]
-    symbol = None
+
+    candidates = []
     try:
         resp = requests.get(
             YAHOO_SEARCH_URL,
-            params={"q": key, "quotesCount": 5, "newsCount": 0},
+            params={"q": key, "quotesCount": 10, "newsCount": 0},
             headers=YAHOO_HEADERS,
             timeout=15,
         )
         resp.raise_for_status()
-        for q in resp.json().get("quotes", []):
-            if q.get("symbol"):
-                symbol = q["symbol"]
-                break
+        candidates = [q["symbol"] for q in resp.json().get("quotes", []) if q.get("symbol")]
     except Exception as e:
         logger.warning(f"Yahoo symbool-lookup mislukt voor {key}: {e}")
+
+    symbol = None
+    if candidates:
+        symbol = candidates[0]  # fallback: eerste treffer
+        # Geef een EUR-notering voorrang (max 5 controles).
+        for cand in candidates[:5]:
+            if _chart_currency(cand) == "EUR":
+                symbol = cand
+                break
+
     _symbol_cache[key] = symbol
     return symbol
 
