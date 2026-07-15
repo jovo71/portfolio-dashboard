@@ -92,15 +92,6 @@ export default function DashboardPage() {
     value: inv.current_value,
   })) ?? []
 
-  const brokerData = (() => {
-    const map: Record<string, number> = {}
-    data?.investments.forEach(inv => {
-      const b = inv.broker || 'Onbekend'
-      map[b] = (map[b] || 0) + inv.current_value
-    })
-    return Object.entries(map).map(([name, value]) => ({ name, value }))
-  })()
-
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null
     return (
@@ -262,26 +253,6 @@ export default function DashboardPage() {
                     cx="50%" cy="50%" innerRadius={55} outerRadius={90}
                     paddingAngle={2}>
                     {allocationData.map((_, i) => (
-                      <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(v: number) => fmtCurrency(v)} />
-                  <Legend iconSize={10} iconType="circle"
-                    wrapperStyle={{ fontSize: 11 }} />
-                </RPieChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="card">
-              <div className="card-header">
-                <span className="card-title">Verdeling per broker</span>
-              </div>
-              <ResponsiveContainer width="100%" height={220}>
-                <RPieChart>
-                  <Pie data={brokerData} dataKey="value" nameKey="name"
-                    cx="50%" cy="50%" innerRadius={55} outerRadius={90}
-                    paddingAngle={2}>
-                    {brokerData.map((_, i) => (
                       <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                     ))}
                   </Pie>
