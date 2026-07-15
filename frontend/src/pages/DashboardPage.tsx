@@ -91,6 +91,7 @@ export default function DashboardPage() {
     name: inv.name.length > 15 ? inv.name.slice(0, 13) + '…' : inv.name,
     value: inv.current_value,
   })) ?? []
+  const allocTotal = allocationData.reduce((sum, d) => sum + (d.value || 0), 0)
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null
@@ -251,12 +252,17 @@ export default function DashboardPage() {
                 <RPieChart>
                   <Pie data={allocationData} dataKey="value" nameKey="name"
                     cx="50%" cy="50%" innerRadius={55} outerRadius={90}
-                    paddingAngle={2}>
+                    paddingAngle={2}
+                    label={({ percent }) => percent >= 0.05 ? `${(percent * 100).toFixed(0)}%` : ''}
+                    labelLine={false}>
                     {allocationData.map((_, i) => (
                       <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(v: number) => fmtCurrency(v)} />
+                  <Tooltip formatter={(v: number) => {
+                    const pct = allocTotal > 0 ? ` (${(v / allocTotal * 100).toFixed(1)}%)` : ''
+                    return `${fmtCurrency(v)}${pct}`
+                  }} />
                   <Legend iconSize={10} iconType="circle"
                     wrapperStyle={{ fontSize: 11 }} />
                 </RPieChart>
