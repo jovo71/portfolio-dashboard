@@ -218,7 +218,7 @@ export default function DashboardPage() {
 
           {/* Grafieken */}
           <div className={styles.chartsGrid}>
-            <div className="card" style={{ gridColumn: 'span 2' }}>
+            <div className="card">
               <div className="card-header">
                 <span className="card-title">Portefeuillewaarde — 1 jaar</span>
               </div>
@@ -270,7 +270,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Rendement per belegging */}
-            <div className="card" style={{ gridColumn: 'span 2' }}>
+            <div className="card">
               <div className="card-header">
                 <span className="card-title">Rendement per belegging (%)</span>
               </div>
