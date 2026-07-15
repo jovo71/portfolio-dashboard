@@ -38,6 +38,21 @@ function fmtPct(v: number) {
   return `${sign}${fmt(v, 2)}%`
 }
 
+// Procentlabel binnen de taartpunt (voorkomt overlap met de legenda)
+function renderPieLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) {
+  if (percent < 0.05) return null
+  const RADIAN = Math.PI / 180
+  const radius = innerRadius + (outerRadius - innerRadius) * 0.5
+  const x = cx + radius * Math.cos(-midAngle * RADIAN)
+  const y = cy + radius * Math.sin(-midAngle * RADIAN)
+  return (
+    <text x={x} y={y} fill="#fff" fontSize={11} fontWeight={600}
+      textAnchor="middle" dominantBaseline="central">
+      {`${(percent * 100).toFixed(0)}%`}
+    </text>
+  )
+}
+
 export default function DashboardPage() {
   const [period, setPeriod] = useState('ytd')
   const [startDate, setStartDate] = useState('')
@@ -253,7 +268,7 @@ export default function DashboardPage() {
                   <Pie data={allocationData} dataKey="value" nameKey="name"
                     cx="50%" cy="50%" innerRadius={55} outerRadius={90}
                     paddingAngle={2}
-                    label={({ percent }) => percent >= 0.05 ? `${(percent * 100).toFixed(0)}%` : ''}
+                    label={renderPieLabel}
                     labelLine={false}>
                     {allocationData.map((_, i) => (
                       <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
